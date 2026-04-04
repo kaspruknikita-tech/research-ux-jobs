@@ -2,9 +2,12 @@
 Экспорт вакансий в Google Sheets.
 """
 
+import os
+import json
 import logging
 import gspread
 from datetime import datetime
+from google.oauth2.service_account import Credentials
 import config
 
 logger = logging.getLogger(__name__)
@@ -15,9 +18,23 @@ HEADERS = [
     "Локация", "Формат работы", "Канал", "Статус", "Ссылка", "Дата парсинга"
 ]
 
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
+
 
 def _get_sheet():
-    gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
+    # Пробуем сначала переменную окружения (Railway),
+    # если нет - читаем из файла (локально)
+    creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
+    if creds_json:
+        creds_dict = json.loads(creds_json)
+        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+        gc = gspread.authorize(creds)
+    else:
+        gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
+
     spreadsheet = gc.open_by_key(config.GOOGLE_SHEET_ID)
     try:
         sheet = spreadsheet.worksheet(config.GOOGLE_SHEET_NAME)
