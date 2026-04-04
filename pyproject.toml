@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "vacancy-parser"
+version = "0.1.0"
+description = "Telegram-бот для публикации вакансий исследователей (UX/Data/Market Research)"
+authors = ["Your Team <team@example.com>"]
+readme = "README.md"
+packages = [{include = "parsers"}, {include = "filters"}, {include = "bot"}]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+python-telegram-bot = "^21.3"
+requests = "^2.32"
+APScheduler = "^3.10"
+python-dotenv = "^1.0"
+gspread = "^6.2.1"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.5"
+pytest = "^8.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
