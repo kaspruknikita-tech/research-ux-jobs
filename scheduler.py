@@ -48,7 +48,7 @@ def run_cycle() -> None:
             v.setdefault("parsed_at", datetime.now(timezone.utc).isoformat())
 
             if not v.get("hash"):
-                raw = f"{v.get('title','')}{v.get('company','')}{v.get('url','')}"
+                raw = f"{v.get('title','')}{v.get('company','')}"  # TODO: city grouping
                 v["hash"] = hashlib.md5(raw.encode()).hexdigest()
 
             if is_duplicate(v):
