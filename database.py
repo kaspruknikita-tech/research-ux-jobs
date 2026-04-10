@@ -39,6 +39,7 @@ def init_db() -> None:
             work_format     TEXT,
             url             TEXT,
             description     TEXT,
+            snippet         TEXT,
             hash            TEXT NOT NULL UNIQUE,
             status          TEXT NOT NULL DEFAULT 'new',
             channel         TEXT NOT NULL,
@@ -70,12 +71,12 @@ def insert_vacancy(vacancy: dict) -> int | None:
             INSERT INTO vacancies
                 (external_id, source, title, company,
                  salary_min, salary_max, currency,
-                 location, work_format, url, description,
+                 location, work_format, url, description, snippet, snippet,
                  hash, status, channel, parsed_at)
             VALUES
                 (:external_id, :source, :title, :company,
                  :salary_min, :salary_max, :currency,
-                 :location, :work_format, :url, :description,
+                 :location, :work_format, :url, :description, :snippet, :snippet,
                  :hash, :status, :channel, :parsed_at)
             """,
             vacancy,

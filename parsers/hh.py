@@ -8,6 +8,7 @@
 """
 
 import logging
+import re
 import time
 
 import requests
@@ -62,6 +63,7 @@ TITLE_ONLY_QUERIES = [
 
 HH_API_URL = "https://api.hh.ru/vacancies"
 DETAIL_REQUEST_DELAY = 0.3
+HIGHLIGHT_TAG_RE = re.compile(r"</?highlighttext>")
 
 
 class HHParser(BaseParser):
@@ -94,6 +96,9 @@ class HHParser(BaseParser):
                 if detail:
                     base["description"] = detail.get("description", base["description"])
                     base["key_skills"] = detail.get("key_skills", [])
+                    base["work_format_raw"] = detail.get("work_format_raw", [])
+                    base["schedule"] = detail.get("schedule", {})
+                base["work_format"] = self._map_work_format(base)
                 result.append(base)
 
     def _search(self, query: str, per_page: int = 50, search_field: str = None) -> list[dict]:
@@ -131,6 +136,8 @@ class HHParser(BaseParser):
                 "key_skills": [
                     s.get("name", "") for s in data.get("key_skills", [])
                 ],
+                "work_format_raw": data.get("work_format") or [],
+                "schedule": data.get("schedule") or {},
             }
         except requests.RequestException:
             logger.warning("Не удалось получить карточку вакансии %s", vacancy_id)
@@ -148,7 +155,7 @@ class HHParser(BaseParser):
                 "salary_max": salary.get("to"),
                 "currency": salary.get("currency"),
                 "location": (item.get("area") or {}).get("name", ""),
-                "work_format": self._extract_work_format(item),
+                "work_format": None,  # заполняется после _fetch_detail в _collect
                 "url": item.get("alternate_url", ""),
                 "description": (item.get("snippet") or {}).get("requirement", ""),
                 "snippet": self._extract_snippet(item),
@@ -166,11 +173,31 @@ class HHParser(BaseParser):
             parts.append(snippet["requirement"])
         if snippet.get("responsibility"):
             parts.append(snippet["responsibility"])
-        return " | ".join(parts)
+        text = " | ".join(parts)
+        return HIGHLIGHT_TAG_RE.sub("", text)
 
     @staticmethod
-    def _extract_work_format(item: dict) -> str:
-        schedule = item.get("schedule")
-        if schedule and isinstance(schedule, dict):
-            return schedule.get("name", "")
-        return ""
+    def _map_work_format(vacancy: dict) -> str | None:
+        """Определяет формат работы: Удалёнка / Офис / Гибрид / None.
+
+        Приоритет: новое поле work_format из детальки (массив id),
+        fallback — старое поле schedule.name.
+        """
+        work_format = vacancy.get("work_format_raw") or []
+        ids = {item.get("id") for item in work_format if isinstance(item, dict)}
+
+        if "REMOTE" in ids:
+            return "Удалёнка"
+        if "HYBRID" in ids:
+            return "Гибрид"
+        if "ON_SITE" in ids:
+            return "Офис"
+
+        # Fallback: старое поле schedule
+        schedule = vacancy.get("schedule") or {}
+        schedule_id = schedule.get("id") if isinstance(schedule, dict) else None
+        if schedule_id == "remote":
+            return "Удалёнка"
+
+        return None
+
