@@ -3,6 +3,8 @@
 Формат: HTML (Telegram parse_mode="HTML").
 """
 
+import html
+
 CURRENCY_SYMBOLS = {
     "RUR": "₽",
     "RUB": "₽",
@@ -17,7 +19,6 @@ CURRENCY_SYMBOLS = {
 
 
 def _format_salary(vacancy: dict) -> str | None:
-    """Красиво форматирует зарплатную вилку."""
     sal_min = vacancy.get("salary_min")
     sal_max = vacancy.get("salary_max")
     currency_code = (vacancy.get("currency") or "").upper()
@@ -27,7 +28,7 @@ def _format_salary(vacancy: dict) -> str | None:
         return f"{n:,}".replace(",", " ")
 
     if sal_min and sal_max:
-        return f"{fmt(sal_min)} – {fmt(sal_max)} {currency}".strip()
+        return f"{fmt(sal_min)} — {fmt(sal_max)} {currency}".strip()
     if sal_min:
         return f"от {fmt(sal_min)} {currency}".strip()
     if sal_max:
@@ -36,48 +37,70 @@ def _format_salary(vacancy: dict) -> str | None:
 
 
 def format_ru(vacancy: dict) -> str:
-    """Шаблон поста для РФ-канала (русский язык)."""
-    salary = _format_salary(vacancy)
-    location = vacancy.get("location") or "не указан"
+    """Шаблон поста для РФ-канала."""
+    title = html.escape(vacancy.get("title") or "")
+    company = html.escape(vacancy.get("company") or "")
+    location = html.escape(vacancy.get("location") or "")
     work_format = vacancy.get("work_format") or ""
-    company = vacancy.get("company") or "—"
 
-    lines = [
-        f"🔍 <b>{vacancy['title']}</b>",
-        f"🏢 {company}",
-    ]
+    # Заголовок: "Title в Компания"
+    header = f"<b>{title}</b>"
+    if company:
+        header += f" в {company}"
+
+    lines = [header, ""]
+
+    # Инфо-строка: формат · город (пропускаем если оба пустые)
+    info_parts = [p for p in [work_format, location] if p]
+    if info_parts:
+        lines.append("🔹 " + " · ".join(info_parts))
+
+    # Зарплата (пропускаем если не указана)
+    salary = _format_salary(vacancy)
     if salary:
-        lines.append(f"💰 {salary}")
-    lines.append(f"📍 {location}")
-    if work_format:
-        lines.append(f"🏠 {work_format}")
+        lines.append(f"🔹 {salary}")
+
+    # Сниппет — хранится как "requirement | responsibility"
+    snippet = vacancy.get("snippet") or ""
+    if snippet:
+        parts = [p.strip() for p in snippet.split(" | ", 1) if p.strip()]
+        lines.append("")
+        lines.append("\n".join(html.escape(p) for p in parts))
+
     lines.append("")
-    lines.append(f"👉 <a href=\"{vacancy['url']}\">Откликнуться</a>")
-    lines.append("")
-    lines.append(f"#вакансия #{vacancy.get('source', 'unknown')}")
+    lines.append(f'👀 <a href="{vacancy["url"]}">Откликнуться на hh.ru</a>')
 
     return "\n".join(lines)
 
 
 def format_global(vacancy: dict) -> str:
     """Шаблон поста для глобального канала (английский)."""
-    salary = _format_salary(vacancy)
-    location = vacancy.get("location") or "Remote"
+    title = html.escape(vacancy.get("title") or "")
+    company = html.escape(vacancy.get("company") or "")
+    location = html.escape(vacancy.get("location") or "")
     work_format = vacancy.get("work_format") or ""
-    company = vacancy.get("company") or "—"
 
-    lines = [
-        f"🔍 <b>{vacancy['title']}</b>",
-        f"🏢 {company}",
-    ]
+    header = f"<b>{title}</b>"
+    if company:
+        header += f" at {company}"
+
+    lines = [header, ""]
+
+    info_parts = [p for p in [work_format, location] if p]
+    if info_parts:
+        lines.append("🔹 " + " · ".join(info_parts))
+
+    salary = _format_salary(vacancy)
     if salary:
-        lines.append(f"💰 {salary}")
-    lines.append(f"📍 {location}")
-    if work_format:
-        lines.append(f"🏠 {work_format}")
+        lines.append(f"🔹 {salary}")
+
+    snippet = vacancy.get("snippet") or ""
+    if snippet:
+        parts = [p.strip() for p in snippet.split(" | ", 1) if p.strip()]
+        lines.append("")
+        lines.append("\n".join(html.escape(p) for p in parts))
+
     lines.append("")
-    lines.append(f"👉 <a href=\"{vacancy['url']}\">Apply</a>")
-    lines.append("")
-    lines.append(f"#vacancy #{vacancy.get('source', 'unknown')}")
+    lines.append(f'👀 <a href="{vacancy["url"]}">Apply</a>')
 
     return "\n".join(lines)
