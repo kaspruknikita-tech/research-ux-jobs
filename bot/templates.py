@@ -4,6 +4,11 @@
 """
 
 import html
+import re
+
+# hh.ru обрезает сниппеты на своей стороне — длину не контролируем.
+# Иногда возвращают несколько точек подряд (......) — нормализуем.
+_DOTS_RE = re.compile(r"\.{2,}")
 
 CURRENCY_SYMBOLS = {
     "RUR": "₽",
@@ -61,11 +66,13 @@ def format_ru(vacancy: dict) -> str:
         lines.append(f"🔹 {salary}")
 
     # Сниппет — хранится как "requirement | responsibility"
+    # Текст обрывается на стороне hh.ru, длину не контролируем
     snippet = vacancy.get("snippet") or ""
     if snippet:
         parts = [p.strip() for p in snippet.split(" | ", 1) if p.strip()]
+        cleaned = [_DOTS_RE.sub("…", p) for p in parts]
         lines.append("")
-        lines.append("\n".join(html.escape(p) for p in parts))
+        lines.append("\n".join(html.escape(p) for p in cleaned))
 
     lines.append("")
     lines.append(f'👀 <a href="{vacancy["url"]}">Откликнуться на hh.ru</a>')
@@ -97,8 +104,9 @@ def format_global(vacancy: dict) -> str:
     snippet = vacancy.get("snippet") or ""
     if snippet:
         parts = [p.strip() for p in snippet.split(" | ", 1) if p.strip()]
+        cleaned = [_DOTS_RE.sub("…", p) for p in parts]
         lines.append("")
-        lines.append("\n".join(html.escape(p) for p in parts))
+        lines.append("\n".join(html.escape(p) for p in cleaned))
 
     lines.append("")
     lines.append(f'👀 <a href="{vacancy["url"]}">Apply</a>')
