@@ -36,7 +36,6 @@ async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     vacancy = database.get_vacancy_by_id(vacancy_id)
     if not vacancy:
-        # Вакансия не найдена — убираем кнопки чтобы не мешались
         await query.edit_message_reply_markup(reply_markup=None)
         return
 
@@ -50,11 +49,9 @@ async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 disable_web_page_preview=True,
             )
             database.mark_posted(vacancy_id)
-            await query.edit_message_text(
-                text=query.message.text + f"\n\n✅ Опубликовано — {actor}",
-                parse_mode=ParseMode.HTML,
-                reply_markup=None,
-            )
+            # Убираем кнопки и добавляем статус отдельным сообщением
+            await query.edit_message_reply_markup(reply_markup=None)
+            await query.message.reply_text(f"✅ Опубликовано — {actor}")
             logger.info("Опубликована вакансия id=%s (%s)", vacancy_id, actor)
         except Exception:
             logger.exception("Ошибка публикации вакансии id=%s", vacancy_id)
@@ -62,9 +59,6 @@ async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     elif action == "reject":
         database.mark_rejected(vacancy_id)
-        await query.edit_message_text(
-            text=query.message.text + f"\n\n❌ Отклонено — {actor}",
-            parse_mode=ParseMode.HTML,
-            reply_markup=None,
-        )
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(f"❌ Отклонено — {actor}")
         logger.info("Отклонена вакансия id=%s (%s)", vacancy_id, actor)
