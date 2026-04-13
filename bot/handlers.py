@@ -31,7 +31,13 @@ async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     try:
         await query.answer()
     except BadRequest:
-        # Callback протух (>60 сек) — просто игнорируем
+        # Telegram аннулирует callback_query через 60 сек после отправки сообщения.
+        # Это происходит после каждого передеплоя: кнопки на старых постах
+        # выглядят активными, но уже не работают. Следующий цикл пришлёт новые.
+        await query.answer(
+            "Кнопка устарела — дождитесь следующего цикла (30 мин)",
+            show_alert=True,
+        )
         return
 
     parts = query.data.split(":")
