@@ -12,9 +12,11 @@
 """
 
 import logging
+import os
 from datetime import datetime, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from telegram.error import Conflict
 from telegram.ext import Application, CallbackQueryHandler
 
 import config
@@ -62,11 +64,19 @@ def main() -> None:
     scheduler.start()
     logger.info("Планировщик запущен, интервал: %d мин", config.PARSE_INTERVAL_MINUTES)
 
+    async def on_error(update, context) -> None:
+        if isinstance(context.error, Conflict):
+            logger.error("Конфликт: запущен другой экземпляр бота. Завершаем процесс.")
+            scheduler.shutdown(wait=False)
+            os._exit(1)
+        logger.exception("Необработанная ошибка бота", exc_info=context.error)
+
     # Telegram-бот стартует сразу — не ждёт окончания первого цикла
     app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
+    app.add_error_handler(on_error)
     app.add_handler(CallbackQueryHandler(handle_moderation))
     logger.info("Бот запущен, слушаем кнопки модерации...")
-    app.run_polling(allowed_updates=["callback_query"])
+    app.run_polling(allowed_updates=["callback_query"], drop_pending_updates=True)
 
 
 if __name__ == "__main__":
