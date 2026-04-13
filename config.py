@@ -27,7 +27,7 @@ HH_USER_AGENT: str = os.getenv("HH_USER_AGENT", "VacancyParser/0.1")
 PARSE_INTERVAL_MINUTES: int = int(os.getenv("PARSE_INTERVAL_MINUTES", "30"))
 
 # --- База данных ---
-DATABASE_PATH: Path = BASE_DIR / os.getenv("DATABASE_PATH", "data/vacancies.db")
+DATABASE_URL: str = os.getenv("DATABASE_URL", "")
 
 # --- Логирование ---
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
@@ -37,12 +37,10 @@ def validate() -> list[str]:
     """Проверяет, что все обязательные настройки заполнены.
     Возвращает список ошибок (пустой = всё ок)."""
     errors = []
-    if not TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_TOKEN == "your-bot-token-here":
-        errors.append("TELEGRAM_BOT_TOKEN не задан в .env")
-    if not TELEGRAM_CHANNEL_RU:
-        errors.append("TELEGRAM_CHANNEL_RU не задан в .env")
-    if not TELEGRAM_CHANNEL_GLOBAL:
-        errors.append("TELEGRAM_CHANNEL_GLOBAL не задан в .env")
+    if not DATABASE_URL:
+        errors.append("DATABASE_URL не задан в .env")
+    if not GOOGLE_SHEET_ID:
+        errors.append("GOOGLE_SHEET_ID не задан в .env")
     return errors
 
 # --- Google Sheets ---

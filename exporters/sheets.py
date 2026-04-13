@@ -99,4 +99,3 @@ def export_to_sheets(vacancies: list[dict]) -> None:
 
     except Exception as e:
         logger.error("Ошибка экспорта в Sheets: %s", e)
-        raise

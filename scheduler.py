@@ -4,8 +4,7 @@
 """
 
 import logging
-import hashlib
-from datetime import datetime, timezone
+from datetime import datetime
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 
@@ -37,20 +36,12 @@ def run_cycle() -> None:
 
     for parser in ACTIVE_PARSERS:
         logger.info("Запускаем парсер: %s", parser.source_name)
-        vacancies = parser.fetch()
+        # run() = fetch() + prepare() (hash, source, channel, status, parsed_at) + обработка ошибок
+        vacancies = parser.run()
         total_parsed += len(vacancies)
         logger.info("Получено: %d вакансий", len(vacancies))
 
         for v in vacancies:
-            v.setdefault("source", parser.source_name)
-            v.setdefault("channel", parser.channel)
-            v.setdefault("status", "new")
-            v.setdefault("parsed_at", datetime.now(timezone.utc).isoformat())
-
-            if not v.get("hash"):
-                raw = f"{v.get('title','')}{v.get('company','')}"  # TODO: city grouping
-                v["hash"] = hashlib.md5(raw.encode()).hexdigest()
-
             if is_duplicate(v):
                 continue
 
@@ -72,7 +63,10 @@ def run_cycle() -> None:
 
     if saved_vacancies:
         logger.info("Экспортируем %d новых вакансий в Sheets...", len(saved_vacancies))
-        export_to_sheets(saved_vacancies)
+        try:
+            export_to_sheets(saved_vacancies)
+        except Exception:
+            logger.exception("Экспорт в Sheets упал, продолжаем")
 
     logger.info("=== Цикл завершён ===\n")
 
