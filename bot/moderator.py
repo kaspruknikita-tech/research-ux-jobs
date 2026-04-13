@@ -15,7 +15,7 @@ from bot.templates import format_ru, format_global
 logger = logging.getLogger(__name__)
 
 # Задержка между сообщениями — чтобы не словить rate limit Telegram
-_SEND_DELAY = 0.5
+_SEND_DELAY = 3.5
 
 
 def _api(method: str, **kwargs) -> dict:

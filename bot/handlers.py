@@ -7,6 +7,7 @@ import logging
 
 from telegram import Update
 from telegram.constants import ParseMode
+from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
 import config
@@ -27,7 +28,11 @@ def _format(vacancy: dict) -> str:
 async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обрабатывает нажатие кнопки Опубликовать / Отклонить."""
     query = update.callback_query
-    await query.answer()
+    try:
+        await query.answer()
+    except BadRequest:
+        # Callback протух (>60 сек) — просто игнорируем
+        return
 
     parts = query.data.split(":")
     action = parts[0]
