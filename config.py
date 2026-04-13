@@ -19,6 +19,7 @@ load_dotenv(BASE_DIR / ".env")
 TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHANNEL_RU: str = os.getenv("TELEGRAM_CHANNEL_RU", "")
 TELEGRAM_CHANNEL_GLOBAL: str = os.getenv("TELEGRAM_CHANNEL_GLOBAL", "")
+TELEGRAM_MODERATION_CHAT: str = os.getenv("TELEGRAM_MODERATION_CHAT", "")
 
 # --- hh.ru ---
 HH_USER_AGENT: str = os.getenv("HH_USER_AGENT", "VacancyParser/0.1")
