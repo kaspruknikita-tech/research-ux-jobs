@@ -12,6 +12,7 @@
 """
 
 import logging
+from datetime import datetime, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from telegram.ext import Application, CallbackQueryHandler
@@ -42,6 +43,15 @@ def main() -> None:
 
     # Фоновый планировщик — не блокирует основной поток
     scheduler = BackgroundScheduler(timezone="Europe/Moscow")
+
+    # Первый цикл через 5 секунд после старта — бот уже слушает кнопки
+    scheduler.add_job(
+        full_cycle,
+        "date",
+        run_date=datetime.now() + timedelta(seconds=5),
+        id="first_cycle",
+    )
+    # Затем каждые N минут
     scheduler.add_job(
         full_cycle,
         "interval",
@@ -52,11 +62,7 @@ def main() -> None:
     scheduler.start()
     logger.info("Планировщик запущен, интервал: %d мин", config.PARSE_INTERVAL_MINUTES)
 
-    # Первый цикл сразу при старте
-    logger.info("Первый цикл...")
-    full_cycle()
-
-    # Telegram-бот — блокирует основной поток и слушает кнопки
+    # Telegram-бот стартует сразу — не ждёт окончания первого цикла
     app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CallbackQueryHandler(handle_moderation))
     logger.info("Бот запущен, слушаем кнопки модерации...")
