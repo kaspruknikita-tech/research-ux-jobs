@@ -113,6 +113,45 @@ def get_pending_vacancies(channel: str) -> list[dict]:
         conn.close()
 
 
+def get_new_vacancies() -> list[dict]:
+    """Возвращает все вакансии со статусом 'new' (ещё не отправлены на модерацию)."""
+    conn = _get_connection()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT * FROM vacancies WHERE status = 'new' ORDER BY parsed_at",
+            )
+            return [dict(row) for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_vacancy_by_id(vacancy_id: int) -> dict | None:
+    """Возвращает вакансию по ID."""
+    conn = _get_connection()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT * FROM vacancies WHERE id = %s", (vacancy_id,))
+            row = cur.fetchone()
+            return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def mark_pending(vacancy_id: int) -> None:
+    """Ставит статус 'pending' — вакансия отправлена в чат модерации."""
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE vacancies SET status = 'pending' WHERE id = %s",
+                (vacancy_id,),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def mark_posted(vacancy_id: int) -> None:
     """Ставит статус 'posted' и фиксирует время публикации."""
     conn = _get_connection()
