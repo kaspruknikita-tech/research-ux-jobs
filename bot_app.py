@@ -13,7 +13,7 @@
 
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from telegram.error import Conflict
@@ -61,7 +61,7 @@ def main() -> None:
     scheduler.add_job(
         full_cycle,
         "date",
-        run_date=datetime.now() + timedelta(seconds=5),
+        run_date=datetime.now(timezone.utc) + timedelta(seconds=5),
         id="first_cycle",
     )
     # Затем каждые N минут
