@@ -21,6 +21,7 @@ from telegram.ext import Application, CallbackQueryHandler
 
 import config
 import database
+from bot.alerts import send_alert
 from bot.handlers import handle_moderation
 from bot.moderator import send_new_vacancies_to_moderation
 from scheduler import run_cycle
@@ -36,8 +37,18 @@ logger = logging.getLogger(__name__)
 
 def full_cycle() -> None:
     """Полный цикл: парсинг + отправка новых вакансий на модерацию."""
-    run_cycle()
-    send_new_vacancies_to_moderation()
+    try:
+        stats = run_cycle()
+        sent = send_new_vacancies_to_moderation()
+        parsed = stats.get("parsed", 0)
+        saved = stats.get("saved", 0)
+        if parsed == 0:
+            send_alert("Внимание: парсер вернул 0 вакансий")
+        else:
+            send_alert(f"Цикл завершён: найдено {parsed}, новых {saved}, отправлено на модерацию {sent}")
+    except Exception as e:
+        logger.exception("Ошибка цикла")
+        send_alert(f"Ошибка цикла: {type(e).__name__}: {e}")
 
 
 def main() -> None:

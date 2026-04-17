@@ -12,6 +12,7 @@ from telegram.ext import ContextTypes
 
 import config
 import database
+from bot.alerts import send_alert
 from bot.templates import format_ru, format_global
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,7 @@ async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             logger.info("Опубликована вакансия id=%s (%s)", vacancy_id, actor)
         except Exception:
             logger.exception("Ошибка публикации вакансии id=%s", vacancy_id)
+            send_alert(f"Не удалось опубликовать вакансию id={vacancy_id}")
             await query.answer("Ошибка при публикации — проверь логи", show_alert=True)
 
     elif action == "reject":

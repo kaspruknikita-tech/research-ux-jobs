@@ -26,7 +26,7 @@ ACTIVE_PARSERS = [
 ]
 
 
-def run_cycle() -> None:
+def run_cycle() -> dict:
     logger.info("=== Начало цикла: %s ===", datetime.now().strftime("%Y-%m-%d %H:%M"))
 
     total_parsed = 0
@@ -69,6 +69,7 @@ def run_cycle() -> None:
             logger.exception("Экспорт в Sheets упал, продолжаем")
 
     logger.info("=== Цикл завершён ===\n")
+    return {"parsed": total_parsed, "saved": total_saved}
 
 
 def start_scheduler() -> None:
