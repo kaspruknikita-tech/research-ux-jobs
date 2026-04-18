@@ -14,30 +14,47 @@ import time
 import requests
 
 import config
+import database
 from parsers.base import BaseParser
 
 logger = logging.getLogger(__name__)
 
 # === OAuth токен ===
+# Кэш в памяти — чтобы не ходить в БД на каждый запрос
 _token: str | None = None
 _token_expires_at: float = 0
-_token_retry_after: float = 0  # не пытаться получить токен до этого момента
+_token_retry_after: float = 0
 
 
 def _get_token() -> str | None:
-    """Возвращает актуальный OAuth-токен. Обновляет если истёк.
-    При неудаче выжидает 5 минут перед повторной попыткой."""
+    """Возвращает актуальный OAuth-токен.
+    Порядок: память → БД → запрос к hh.ru.
+    При неудаче не повторяет попытку 5 минут."""
     global _token, _token_expires_at, _token_retry_after
 
     if not config.HH_CLIENT_ID or not config.HH_CLIENT_SECRET:
         return None
 
+    # 1. Проверяем кэш в памяти
     if _token and time.time() < _token_expires_at - 60:
         return _token
 
     if time.time() < _token_retry_after:
         return None
 
+    # 2. Проверяем БД — токен мог сохранить предыдущий экземпляр
+    try:
+        db_token = database.get_setting("hh_oauth_token")
+        db_expires = database.get_setting("hh_oauth_expires_at")
+        if db_token and db_expires and float(db_expires) > time.time() + 60:
+            _token = db_token
+            _token_expires_at = float(db_expires)
+            logger.info("hh.ru OAuth токен загружен из БД")
+            return _token
+    except Exception:
+        logger.warning("Не удалось прочитать токен из БД")
+
+    # 3. Получаем новый токен от hh.ru
     try:
         resp = requests.post(
             "https://hh.ru/oauth/token",
@@ -53,11 +70,14 @@ def _get_token() -> str | None:
         data = resp.json()
         _token = data["access_token"]
         _token_expires_at = time.time() + data.get("expires_in", 86400)
-        logger.info("hh.ru OAuth токен получен")
+        # Сохраняем в БД для следующих экземпляров
+        database.set_setting("hh_oauth_token", _token)
+        database.set_setting("hh_oauth_expires_at", str(_token_expires_at))
+        logger.info("hh.ru OAuth токен получен и сохранён в БД")
         return _token
     except Exception:
         logger.exception("Не удалось получить OAuth токен hh.ru")
-        _token_retry_after = time.time() + 300  # повтор через 5 минут
+        _token_retry_after = time.time() + 300
         return None
 
 

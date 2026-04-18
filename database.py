@@ -23,10 +23,16 @@ def _get_connection() -> psycopg2.extensions.connection:
 
 
 def init_db() -> None:
-    """Создаёт таблицу vacancies, если её нет."""
+    """Создаёт таблицы, если их нет."""
     conn = _get_connection()
     try:
         with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS settings (
+                    key   TEXT PRIMARY KEY,
+                    value TEXT
+                )
+            """)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS vacancies (
                     id              SERIAL PRIMARY KEY,
@@ -51,6 +57,35 @@ def init_db() -> None:
             """)
         conn.commit()
         logger.info("База данных инициализирована (PostgreSQL)")
+    finally:
+        conn.close()
+
+
+def get_setting(key: str) -> str | None:
+    """Читает значение из таблицы settings."""
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT value FROM settings WHERE key = %s", (key,))
+            row = cur.fetchone()
+            return row[0] if row else None
+    finally:
+        conn.close()
+
+
+def set_setting(key: str, value: str) -> None:
+    """Сохраняет или обновляет значение в таблице settings."""
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO settings (key, value) VALUES (%s, %s)
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+                """,
+                (key, value),
+            )
+        conn.commit()
     finally:
         conn.close()
 
