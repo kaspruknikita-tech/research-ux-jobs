@@ -57,11 +57,12 @@ def main() -> None:
     # Фоновый планировщик — не блокирует основной поток
     scheduler = BackgroundScheduler(timezone="Europe/Moscow")
 
-    # Первый цикл через 5 секунд после старта — бот уже слушает кнопки
+    # Первый цикл через 60 секунд — даём время умереть старому экземпляру
+    # чтобы не получить 403 от hh.ru при двух OAuth-запросах подряд с одного IP
     scheduler.add_job(
         full_cycle,
         "date",
-        run_date=datetime.now(timezone.utc) + timedelta(seconds=5),
+        run_date=datetime.now(timezone.utc) + timedelta(seconds=60),
         id="first_cycle",
     )
     # Затем каждые N минут
