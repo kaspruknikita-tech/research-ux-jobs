@@ -65,16 +65,17 @@ def main() -> None:
         run_date=datetime.now(timezone.utc) + timedelta(seconds=60),
         id="first_cycle",
     )
-    # Затем каждые N минут
+    # Каждые 2 часа с 10 до 21 по Москве
     scheduler.add_job(
         full_cycle,
-        "interval",
-        minutes=config.PARSE_INTERVAL_MINUTES,
+        "cron",
+        hour="10-20/2",
+        minute=0,
         id="main_cycle",
         max_instances=1,
     )
     scheduler.start()
-    logger.info("Планировщик запущен, интервал: %d мин", config.PARSE_INTERVAL_MINUTES)
+    logger.info("Планировщик запущен: каждые 2 часа с 10:00 до 21:00 МСК")
 
     async def on_error(update, context) -> None:
         if isinstance(context.error, Conflict):
