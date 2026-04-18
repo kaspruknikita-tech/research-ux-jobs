@@ -21,17 +21,22 @@ logger = logging.getLogger(__name__)
 # === OAuth токен ===
 _token: str | None = None
 _token_expires_at: float = 0
+_token_retry_after: float = 0  # не пытаться получить токен до этого момента
 
 
 def _get_token() -> str | None:
-    """Возвращает актуальный OAuth-токен. Обновляет если истёк."""
-    global _token, _token_expires_at
+    """Возвращает актуальный OAuth-токен. Обновляет если истёк.
+    При неудаче выжидает 5 минут перед повторной попыткой."""
+    global _token, _token_expires_at, _token_retry_after
 
     if not config.HH_CLIENT_ID or not config.HH_CLIENT_SECRET:
         return None
 
     if _token and time.time() < _token_expires_at - 60:
         return _token
+
+    if time.time() < _token_retry_after:
+        return None
 
     try:
         resp = requests.post(
@@ -52,6 +57,7 @@ def _get_token() -> str | None:
         return _token
     except Exception:
         logger.exception("Не удалось получить OAuth токен hh.ru")
+        _token_retry_after = time.time() + 300  # повтор через 5 минут
         return None
 
 
