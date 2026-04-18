@@ -34,6 +34,7 @@ class BaseParser(ABC):
     def prepare(self, raw: dict) -> dict:
         """Дополняет сырую вакансию служебными полями перед сохранением."""
         return {
+            "snippet": None,
             **raw,
             "source": self.source_name,
             "channel": self.channel,
