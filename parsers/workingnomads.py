@@ -1,8 +1,7 @@
 """
-Парсер Remotive.com.
-API: https://remotive.com/api/remote-jobs
-Публичный, без ключей. Возвращает JSON с массивом jobs.
-Примечание: бесплатный API возвращает ограниченный набор вакансий (~20-100).
+Парсер Working Nomads.
+API: https://www.workingnomads.com/api/exposed_jobs/
+Публичный, без ключей. Один GET отдаёт весь список.
 """
 
 import logging
@@ -13,7 +12,7 @@ from parsers.base import BaseParser
 
 logger = logging.getLogger(__name__)
 
-API_URL = "https://remotive.com/api/remote-jobs"
+API_URL = "https://www.workingnomads.com/api/exposed_jobs/"
 
 WHITELIST = ["researcher", "research", "ux", "cx", "insight", "usability"]
 
@@ -23,17 +22,17 @@ def _is_relevant(title: str) -> bool:
     return any(w in t for w in WHITELIST)
 
 
-class RemotiveParser(BaseParser):
-    source_name = "remotive"
+class WorkingNomadsParser(BaseParser):
+    source_name = "workingnomads"
     channel = "global"
 
     def fetch(self) -> list[dict]:
         try:
             resp = requests.get(API_URL, timeout=15)
             resp.raise_for_status()
-            jobs = resp.json().get("jobs", [])
+            jobs = resp.json()
         except requests.RequestException:
-            logger.exception("[remotive] Ошибка запроса")
+            logger.exception("[workingnomads] Ошибка запроса")
             return []
 
         result = []
@@ -48,7 +47,7 @@ class RemotiveParser(BaseParser):
                 "salary_min": None,
                 "salary_max": None,
                 "currency": None,
-                "location": job.get("candidate_required_location", ""),
+                "location": job.get("location", ""),
                 "work_format": "Remote",
                 "url": job.get("url", ""),
                 "description": job.get("description", ""),

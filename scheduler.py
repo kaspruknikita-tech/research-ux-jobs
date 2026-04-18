@@ -11,6 +11,12 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 import config
 import database
 from parsers.hh import HHParser
+from parsers.telegram import TelegramChannelParser
+from parsers.arbeitnow import ArbeitnowParser
+from parsers.himalayas import HimalayasParser
+from parsers.remotive import RemotiveParser
+from parsers.weworkremotely import WeWorkRemotelyParser
+from parsers.workingnomads import WorkingNomadsParser
 from filters.stopwords import apply_filters
 from filters.dedup import is_duplicate
 from exporters.sheets import export_to_sheets
@@ -23,6 +29,12 @@ logger = logging.getLogger(__name__)
 
 ACTIVE_PARSERS = [
     HHParser(),
+    TelegramChannelParser(),
+    ArbeitnowParser(),
+    HimalayasParser(),
+    RemotiveParser(),
+    WeWorkRemotelyParser(),
+    WorkingNomadsParser(),
 ]
 
 
