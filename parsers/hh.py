@@ -18,6 +18,51 @@ from parsers.base import BaseParser
 
 logger = logging.getLogger(__name__)
 
+# === OAuth токен ===
+_token: str | None = None
+_token_expires_at: float = 0
+
+
+def _get_token() -> str | None:
+    """Возвращает актуальный OAuth-токен. Обновляет если истёк."""
+    global _token, _token_expires_at
+
+    if not config.HH_CLIENT_ID or not config.HH_CLIENT_SECRET:
+        return None
+
+    if _token and time.time() < _token_expires_at - 60:
+        return _token
+
+    try:
+        resp = requests.post(
+            "https://hh.ru/oauth/token",
+            data={
+                "grant_type": "client_credentials",
+                "client_id": config.HH_CLIENT_ID,
+                "client_secret": config.HH_CLIENT_SECRET,
+            },
+            headers={"User-Agent": config.HH_USER_AGENT},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        _token = data["access_token"]
+        _token_expires_at = time.time() + data.get("expires_in", 86400)
+        logger.info("hh.ru OAuth токен получен")
+        return _token
+    except Exception:
+        logger.exception("Не удалось получить OAuth токен hh.ru")
+        return None
+
+
+def _headers() -> dict:
+    headers = {"User-Agent": config.HH_USER_AGENT}
+    token = _get_token()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
 # === Поисковые запросы ===
 
 # Точные — ищем по всему тексту вакансии
@@ -103,7 +148,7 @@ class HHParser(BaseParser):
 
     def _search(self, query: str, per_page: int = 50, search_field: str = None) -> list[dict]:
         """Один поисковый запрос к API hh.ru."""
-        headers = {"User-Agent": config.HH_USER_AGENT}
+        headers = _headers()
         params = {
             "text": query,
             "per_page": per_page,
@@ -125,7 +170,7 @@ class HHParser(BaseParser):
     def _fetch_detail(self, vacancy_id: str) -> dict | None:
         """Запрашивает полную карточку вакансии по ID."""
         url = f"{HH_API_URL}/{vacancy_id}"
-        headers = {"User-Agent": config.HH_USER_AGENT}
+        headers = _headers()
         try:
             time.sleep(DETAIL_REQUEST_DELAY)
             resp = requests.get(url, headers=headers, timeout=15)

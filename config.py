@@ -24,6 +24,8 @@ TELEGRAM_ALERT_CHAT: str = os.getenv("TELEGRAM_ALERT_CHAT", "")
 
 # --- hh.ru ---
 HH_USER_AGENT: str = os.getenv("HH_USER_AGENT", "VacancyParser/0.1")
+HH_CLIENT_ID: str = os.getenv("HH_CLIENT_ID", "")
+HH_CLIENT_SECRET: str = os.getenv("HH_CLIENT_SECRET", "")
 
 # --- Планировщик ---
 PARSE_INTERVAL_MINUTES: int = int(os.getenv("PARSE_INTERVAL_MINUTES", "30"))
