@@ -1,9 +1,9 @@
 """
 Парсер Remotive.com.
 API: https://remotive.com/api/remote-jobs
-Публичный, без ключей. Возвращает ~20-100 последних вакансий.
-Параметр search= на бесплатном тарифе не фильтрует — игнорируем.
-Фильтрация по заголовку на нашей стороне.
+Публичный, без ключей. Один запрос на цикл (rate limit: 2 req/min).
+Параметр search= по факту не фильтрует — фильтруем по заголовку сами.
+Задержка вакансий: 24 часа.
 """
 
 import logging
@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 API_URL = "https://remotive.com/api/remote-jobs"
 
 TITLE_WHITELIST = [
-    "researcher", "research", "ux", "cx", "insight", "usability",
+    "researcher", "research", "ux", "cx",
+    "insight", "insights", "usability",
 ]
 
 
