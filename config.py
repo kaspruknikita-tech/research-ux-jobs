@@ -27,6 +27,19 @@ HH_USER_AGENT: str = os.getenv("HH_USER_AGENT", "VacancyParser/0.1")
 HH_CLIENT_ID: str = os.getenv("HH_CLIENT_ID", "")
 HH_CLIENT_SECRET: str = os.getenv("HH_CLIENT_SECRET", "")
 
+# --- Adzuna ---
+ADZUNA_APP_ID: str = os.getenv("ADZUNA_APP_ID", "")
+ADZUNA_APP_KEY: str = os.getenv("ADZUNA_APP_KEY", "")
+
+# --- Telethon (парсер Telegram-каналов) ---
+TG_API_ID: int = int(os.getenv("TG_API_ID", "0") or "0")
+TG_API_HASH: str = os.getenv("TG_API_HASH", "")
+TG_SESSION_STRING: str = os.getenv("TG_SESSION_STRING", "")
+TG_SOURCE_CHANNELS: list[str] = [
+    ch.strip() for ch in os.getenv("TG_SOURCE_CHANNELS", "").split(",") if ch.strip()
+]
+TG_DAYS_BACK: int = int(os.getenv("TG_DAYS_BACK", "7"))
+
 # --- Планировщик ---
 PARSE_INTERVAL_MINUTES: int = int(os.getenv("PARSE_INTERVAL_MINUTES", "30"))
 

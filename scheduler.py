@@ -10,6 +10,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 
 import config
 import database
+from parsers.adzuna import AdzunaParser
 from parsers.hh import HHParser
 from parsers.telegram import TelegramChannelParser
 from parsers.arbeitnow import ArbeitnowParser
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 ACTIVE_PARSERS = [
     HHParser(),
+    AdzunaParser(),
     TelegramChannelParser(),
     ArbeitnowParser(),
     HimalayasParser(),
