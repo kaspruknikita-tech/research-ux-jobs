@@ -58,7 +58,8 @@ def _smart_bullet(text: str, max_len: int = 65) -> str:
 
 
 def _parse_sections(raw_html: str) -> dict:
-    """Разбирает HTML на секции: intro + именованные разделы с буллетами."""
+    """Разбирает HTML на секции: intro + именованные разделы с буллетами.
+    Если HTML-структуры нет (plain text) — возвращает текст как intro."""
     if not raw_html:
         return {}
 
@@ -90,6 +91,12 @@ def _parse_sections(raw_html: str) -> dict:
 
     if intro:
         sections["__intro__"] = intro
+    elif not sections:
+        # Plain text без HTML-структуры (например, Adzuna)
+        plain = soup.get_text(" ", strip=True)
+        if plain:
+            sections["__intro__"] = _first_sentence(plain)
+
     return sections
 
 
