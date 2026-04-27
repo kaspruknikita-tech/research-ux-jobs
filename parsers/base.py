@@ -26,9 +26,15 @@ class BaseParser(ABC):
         """
         ...
 
-    def make_hash(self, title: str, company: str, url: str) -> str:
-        """Генерирует хэш для дедупликации."""
-        raw = f"{title}|{company}|{url}".lower().strip()
+    def make_hash(self, title: str, company: str, url: str,
+                  external_id: str = "", source: str = "") -> str:
+        """Генерирует хэш для дедупликации.
+        Если есть external_id — используем source|external_id (стабильно).
+        Иначе — title|company|url (для источников без id)."""
+        if external_id and source:
+            raw = f"{source}|{external_id}"
+        else:
+            raw = f"{title}|{company}|{url}".lower().strip()
         return hashlib.sha256(raw.encode()).hexdigest()
 
     def prepare(self, raw: dict) -> dict:
@@ -42,6 +48,8 @@ class BaseParser(ABC):
                 raw.get("title", ""),
                 raw.get("company", ""),
                 raw.get("url", ""),
+                external_id=raw.get("external_id", ""),
+                source=self.source_name,
             ),
             "status": "new",
             "parsed_at": datetime.now(timezone.utc).isoformat(),
