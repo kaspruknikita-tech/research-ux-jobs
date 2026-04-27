@@ -6,7 +6,9 @@
 import logging
 from datetime import datetime
 
+import requests
 from apscheduler.schedulers.blocking import BlockingScheduler
+from bs4 import BeautifulSoup
 
 import config
 import database
@@ -40,6 +42,41 @@ ACTIVE_PARSERS = [
 ]
 
 
+_ADZUNA_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    )
+}
+
+_ADZUNA_SELECTORS = [
+    "[class*='adp-body']",
+    "[data-testid='ad-body']",
+    "[class*='job-description']",
+    "[class*='jobdescription']",
+    "section.description",
+]
+
+
+def _enrich_adzuna(v: dict) -> None:
+    url = v.get("url", "")
+    if not url:
+        return
+    try:
+        resp = requests.get(url, headers=_ADZUNA_HEADERS, timeout=10, allow_redirects=True)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for selector in _ADZUNA_SELECTORS:
+            el = soup.select_one(selector)
+            if el and len(el.get_text(strip=True)) > len(v.get("description", "") or ""):
+                v["description"] = str(el)
+                logger.debug("[adzuna] Обогащено описание: %s", url)
+                return
+    except Exception:
+        logger.debug("[adzuna] Не удалось получить полное описание: %s", url)
+
+
 def run_cycle() -> dict:
     logger.info("=== Начало цикла: %s ===", datetime.now().strftime("%Y-%m-%d %H:%M"))
 
@@ -64,6 +101,9 @@ def run_cycle() -> dict:
                 v["status"] = "rejected"
                 database.insert_vacancy(v)
                 continue
+
+            if v.get("source") == "adzuna":
+                _enrich_adzuna(v)
 
             new_id = database.insert_vacancy(v)
             if new_id:
