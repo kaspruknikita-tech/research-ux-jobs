@@ -1,6 +1,7 @@
 """
 Дедупликация вакансий.
-Проверяет хэш (title+company+url) по базе. Если уже есть — пропускаем.
+Проверяет по хэшу, а также по external_id+source (для переходного периода,
+когда в базе лежат старые хэши по URL, а новые — по external_id).
 """
 
 import logging
@@ -12,10 +13,17 @@ logger = logging.getLogger(__name__)
 
 def is_duplicate(vacancy: dict) -> bool:
     """Возвращает True, если вакансия уже есть в базе."""
-    hash_value = vacancy.get("hash", "")
-    if not hash_value:
-        return False
-    exists = database.vacancy_exists(hash_value)
-    if exists:
-        logger.debug("Дубликат: %s (%s)", vacancy.get("title"), vacancy.get("company"))
-    return exists
+    title = vacancy.get("title")
+    company = vacancy.get("company")
+
+    if database.vacancy_exists(vacancy.get("hash", "")):
+        logger.debug("Дубликат (hash): %s (%s)", title, company)
+        return True
+
+    external_id = vacancy.get("external_id")
+    source = vacancy.get("source")
+    if external_id and source and database.vacancy_exists_by_external(external_id, source):
+        logger.debug("Дубликат (external_id): %s (%s)", title, company)
+        return True
+
+    return False

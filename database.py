@@ -101,6 +101,20 @@ def vacancy_exists(hash_value: str) -> bool:
         conn.close()
 
 
+def vacancy_exists_by_external(external_id: str, source: str) -> bool:
+    """Проверяет наличие вакансии по external_id + source."""
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM vacancies WHERE external_id = %s AND source = %s",
+                (external_id, source),
+            )
+            return cur.fetchone() is not None
+    finally:
+        conn.close()
+
+
 def insert_vacancy(vacancy: dict) -> int | None:
     """Вставляет вакансию в БД. Возвращает id или None при дубликате."""
     conn = _get_connection()
