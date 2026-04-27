@@ -83,6 +83,13 @@ def _parse_sections(raw_html: str) -> dict:
             elif not intro:
                 intro = _first_sentence(text)
 
+        elif tag.name in ("strong", "b"):
+            # Голый <strong> без <p> — тоже может быть заголовком раздела
+            text = tag.get_text().strip().rstrip(":")
+            if text and len(text) < 80:
+                current = text
+                sections[current] = []
+
         elif tag.name in ("ul", "ol") and current:
             for li in tag.find_all("li", recursive=False):
                 text = li.get_text().strip()
@@ -105,7 +112,7 @@ def _fmt_bullets(items: list, n: int = 5) -> str:
 
 
 def _fmt_conditions(items: list, n: int = 5) -> str:
-    return ", ".join(i.split("(")[0].split(",")[0].strip() for i in items[:n])
+    return ", ".join(i.split("(")[0].split(",")[0].strip().rstrip(";.") for i in items[:n])
 
 
 def _build_post(vacancy: dict, apply_label: str, is_ru: bool) -> str:
@@ -139,11 +146,23 @@ def _build_post(vacancy: dict, apply_label: str, is_ru: bool) -> str:
             lines += ["", "<b>О роли</b>", html.escape(intro)]
 
         tasks_key = next((k for k in sections if k != "__intro__" and
-                          any(w in k.lower() for w in ["обязанност", "задач", "responsi", "duties"])), None)
+                          any(w in k.lower() for w in [
+                              "обязанност", "задач", "responsi", "duties",
+                              "нужно будет делать", "будете делать", "нужно делать",
+                              "что делать", "функции", "чем предстоит",
+                          ])), None)
         reqs_key = next((k for k in sections if k != "__intro__" and
-                         any(w in k.lower() for w in ["требован", "require", "qualif", "опыт"])), None)
+                         any(w in k.lower() for w in [
+                             "требован", "require", "qualif", "опыт",
+                             "нам важно", "для нас важно", "что важно",
+                             "ожидаем", "ищем", "нам нужен", "нам нужна",
+                         ])), None)
         cond_key = next((k for k in sections if k != "__intro__" and
-                         any(w in k.lower() for w in ["услови", "offer", "benefit", "мы предлага"])), None)
+                         any(w in k.lower() for w in [
+                             "услови", "offer", "benefit", "мы предлага",
+                             "предлагаем", "работа с нами", "у нас вы",
+                             "что мы даём", "что даём", "что получите",
+                         ])), None)
 
         if tasks_key and sections[tasks_key]:
             lines += ["", f"<b>{'Задачи' if is_ru else 'Responsibilities'}</b>",
