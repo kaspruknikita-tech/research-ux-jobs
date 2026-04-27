@@ -31,6 +31,7 @@ BLACKLIST = [
     # Дизайнеры (не исследователи)
     "designer",
     "дизайнер",
+    "copywriter",
     "UX редактор",
     "UX-редактор",
     # Менеджеры
@@ -41,12 +42,36 @@ BLACKLIST = [
     "Research Engineer",
     "Reverse Engineer",
     "инженер-исследователь",
-    # Немецкие вакансии (гендерная нотация DE/AT/CH)
+    "ux engineer",
+    "ui engineer",
+    "ux/ui engineer",
+    "ui/ux engineer",
+    # Немецкие вакансии — гендерная нотация DE/AT/CH (все варианты)
     "(m/w/d)",
     "(w/m/d)",
     "(m/f/d)",
     "(f/m/d)",
+    "(w|m|d)",
+    "(d/w/m)",
+    "(x,f,m)",
+    "(x,m,f)",
+    "w/m/div",
+    "(gn)",
     "(all genders)",
+    # Немецкие слова (стажировки, Werkstudent и т.п.)
+    "werkstudent",
+    "praktikum",
+    "abschlussarbeit",
+    "teamleiter",
+    "abteilungsleitung",
+    # Финансовые кванты (не UX-исследователи)
+    "quant trader",
+    "hedge fund",
+    "systematic trading",
+    # Учёные / другие исследователи не по теме
+    "химик",
+    # Спам
+    "remote work from home market research. ideal for",
     # Прочий мусор
     "научный сотрудник",
     "пеший исследователь",
