@@ -38,6 +38,7 @@ BLACKLIST = [
     "program manager",
     "project manager",
     "product manager",
+    "account manager",
     # Инженеры / другие технические
     "Research Engineer",
     "Reverse Engineer",
