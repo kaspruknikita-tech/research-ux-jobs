@@ -56,12 +56,25 @@ def _parse_sections(raw_html: str) -> dict:
         return {}
 
     soup = BeautifulSoup(raw_html, "html.parser")
+
+    # Adzuna оборачивает контент в <section> или <div> — заходим внутрь
+    top_tags = [c for c in soup.children if hasattr(c, "name") and c.name]
+    root = top_tags[0] if len(top_tags) == 1 and top_tags[0].name in ("section", "div", "article") else soup
+
     sections = {}
     current = None
     intro = ""
 
-    for tag in soup.children:
-        if not hasattr(tag, "name") or tag.name is None:
+    for tag in root.children:
+        if not hasattr(tag, "name"):
+            continue
+
+        # Текстовая нода — может быть заголовком (напр. "Highlights", "About the role")
+        if tag.name is None:
+            text = str(tag).strip()
+            if text and len(text) < 80 and not text.endswith("?") and text not in sections:
+                current = text.rstrip(":")
+                sections[current] = []
             continue
 
         if tag.name == "p":
@@ -69,10 +82,12 @@ def _parse_sections(raw_html: str) -> dict:
             text = tag.get_text().strip()
             if not text:
                 continue
-            if strong or text.endswith(":"):
+            # Заголовок: короткий (<= 60 символов), не вопрос, есть bold или двоеточие в конце
+            is_header = (strong and len(text) <= 60 and not text.endswith("?")) or text.endswith(":")
+            if is_header:
                 current = text.rstrip(":")
                 sections[current] = []
-            elif not intro:
+            elif not strong and not intro:
                 intro = _first_sentence(text)
 
         elif tag.name in ("strong", "b"):
@@ -142,18 +157,24 @@ def _build_post(vacancy: dict, apply_label: str, is_ru: bool) -> str:
                               "обязанност", "задач", "responsi", "duties",
                               "нужно будет делать", "будете делать", "нужно делать",
                               "что делать", "функции", "чем предстоит",
+                              "what you'll do", "what you will do", "you will be responsible",
+                              "role overview", "the role", "your role",
                           ])), None)
-        reqs_key = next((k for k in sections if k != "__intro__" and
+        reqs_key = next((k for k in sections if k != "__intro__" and k != tasks_key and
                          any(w in k.lower() for w in [
                              "требован", "require", "qualif", "опыт",
                              "нам важно", "для нас важно", "что важно",
                              "ожидаем", "ищем", "нам нужен", "нам нужна",
+                             "what we're looking for", "what you'll need", "you'll need",
+                             "to be successful", "about you", "who you are",
                          ])), None)
         cond_key = next((k for k in sections if k != "__intro__" and
                          any(w in k.lower() for w in [
                              "услови", "offer", "benefit", "мы предлага",
                              "предлагаем", "работа с нами", "у нас вы",
                              "что мы даём", "что даём", "что получите",
+                             "what we offer", "perks", "compensation", "why join",
+                             "highlights",
                          ])), None)
 
         if tasks_key and sections[tasks_key]:
