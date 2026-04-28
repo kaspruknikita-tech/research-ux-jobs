@@ -8,10 +8,10 @@
 
 import logging
 
+from langdetect import detect, LangDetectException
+
 logger = logging.getLogger(__name__)
 
-# Если ХОТЯ БЫ ОДНО из этих слов есть в заголовке (без учёта регистра) —
-# вакансия проходит. Иначе — отсеивается.
 WHITELIST = [
     "исследователь",
     "исследования",
@@ -25,8 +25,6 @@ WHITELIST = [
     "юзабилити",
 ]
 
-# Даже если слово из белого списка есть — эти фразы всё равно мусор.
-# Держим этот список КОРОТКИМ — только то, что реально проскакивает.
 BLACKLIST = [
     # Дизайнеры (не исследователи)
     "designer",
@@ -47,28 +45,21 @@ BLACKLIST = [
     "ui engineer",
     "ux/ui engineer",
     "ui/ux engineer",
-    # Немецкие вакансии — гендерная нотация DE/AT/CH (все варианты)
-    "(m/w/d)",
-    "(w/m/d)",
-    "(m/f/d)",
-    "(f/m/d)",
-    "(w|m|d)",
-    "(d/w/m)",
-    "(x,f,m)",
-    "(x,m,f)",
-    "w/m/div",
-    "(gn)",
-    "(all genders)",
-    # Немецкие слова (стажировки, Werkstudent и т.п.)
-    "werkstudent",
-    "praktikum",
-    "abschlussarbeit",
-    "teamleiter",
-    "abteilungsleitung",
+    "design engineer",
+    "api engineer",
+    # Академические / научные исследователи
+    "postdoctoral",
+    "postdoc",
+    "research fellow",
+    "research officer",
+    "research scientist",
+    "data scientist",
     # Финансовые кванты (не UX-исследователи)
     "quant trader",
     "hedge fund",
     "systematic trading",
+    # Маркетологи
+    "маркетолог",
     # Учёные / другие исследователи не по теме
     "химик",
     # Спам
@@ -84,8 +75,23 @@ BLACKLIST = [
     "Агроном",
 ]
 
-# Чёрный список компаний
 COMPANY_BLACKLIST: set[str] = set()
+
+
+def _is_allowed_language(vacancy: dict) -> bool:
+    text = " ".join(filter(None, [
+        vacancy.get("title", ""),
+        vacancy.get("snippet", ""),
+        vacancy.get("description", ""),
+    ]))
+    if not text or len(text) < 20:
+        return True
+    try:
+        lang = detect(text)
+        # hh.ru возвращает русский текст — пропускаем, Adzuna/прочие — только английский
+        return lang in ("en", "ru")
+    except LangDetectException:
+        return True
 
 
 def apply_filters(vacancy: dict) -> bool:
@@ -101,7 +107,14 @@ def apply_filters(vacancy: dict) -> bool:
     # 2. Белый список — должно быть хотя бы одно слово
     for word in WHITELIST:
         if word.lower() in title:
-            return True
+            break
+    else:
+        logger.debug("Не прошёл белый список: %s", vacancy.get("title"))
+        return False
 
-    logger.debug("Не прошёл белый список: %s", vacancy.get("title"))
-    return False
+    # 3. Язык — только английский
+    if not _is_allowed_language(vacancy):
+        logger.debug("Не английский язык: %s", vacancy.get("title"))
+        return False
+
+    return True

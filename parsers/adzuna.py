@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://api.adzuna.com/v1/api/jobs/{country}/search/1"
 REQUEST_DELAY = 0.5
 
-COUNTRIES = ["gb", "us", "de", "nl", "au", "ca"]
+COUNTRIES = ["gb", "us", "de", "nl", "au", "ca", "fr", "sg", "at", "pl"]
 
 SEARCH_QUERIES = [
     "ux researcher",

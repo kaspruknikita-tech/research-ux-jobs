@@ -16,6 +16,7 @@ gspread = "^6.2.1"
 psycopg2-binary = "^2.9"
 beautifulsoup4 = ">=4.12"
 telethon = "^1.36"
+langdetect = "^1.0.9"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.5"
