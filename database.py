@@ -115,6 +115,20 @@ def vacancy_exists_by_external(external_id: str, source: str) -> bool:
         conn.close()
 
 
+def vacancy_exists_by_title_company(title: str, company: str) -> bool:
+    """Проверяет, есть ли вакансия с таким же заголовком и компанией."""
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM vacancies WHERE lower(title) = lower(%s) AND lower(company) = lower(%s) LIMIT 1",
+                (title, company),
+            )
+            return cur.fetchone() is not None
+    finally:
+        conn.close()
+
+
 def insert_vacancy(vacancy: dict) -> int | None:
     """Вставляет вакансию в БД. Возвращает id или None при дубликате."""
     conn = _get_connection()

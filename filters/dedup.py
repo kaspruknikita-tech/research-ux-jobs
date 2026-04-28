@@ -26,4 +26,8 @@ def is_duplicate(vacancy: dict) -> bool:
         logger.debug("Дубликат (external_id): %s (%s)", title, company)
         return True
 
+    if title and company and database.vacancy_exists_by_title_company(title, company):
+        logger.debug("Дубликат (title+company): %s (%s)", title, company)
+        return True
+
     return False
