@@ -35,9 +35,6 @@ BLOCK_CASES = [
     "Project Manager CX",
     "Account Manager CX",
     "Research Engineer",
-    "UX Researcher (m/w/d)",
-    "UX Researcher (all genders)",
-    "UX Researcher (w|m|d)",
     "Werkstudent UX Research",
     "Praktikum UX Research",
     "Quantitative Researcher Systematic Trading Hedge Fund",
@@ -54,6 +51,22 @@ def test_filter_passes(title):
 @pytest.mark.parametrize("title", BLOCK_CASES)
 def test_filter_blocks(title):
     assert not apply_filters({"title": title}), f"Должен быть заблокирован: {title!r}"
+
+
+def test_filter_blocks_german_by_language():
+    v = {
+        "title": "UX Researcher (m/w/d)",
+        "description": "Wir suchen einen erfahrenen UX Researcher für unser Team in Berlin. Sie werden Nutzerstudien durchführen und Erkenntnisse präsentieren.",
+    }
+    assert not apply_filters(v), "Немецкая вакансия должна быть заблокирована по языку"
+
+
+def test_filter_passes_russian_vacancy():
+    v = {
+        "title": "UX-исследователь",
+        "description": "Ищем опытного UX-исследователя в нашу команду. Вы будете проводить интервью и юзабилити-тесты.",
+    }
+    assert apply_filters(v), "Русская вакансия должна проходить фильтр"
 
 
 # ---------------------------------------------------------------------------

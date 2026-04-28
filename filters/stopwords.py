@@ -58,6 +58,11 @@ BLACKLIST = [
     "quant trader",
     "hedge fund",
     "systematic trading",
+    # Немецкие стажировки (однозначно не нужны вне зависимости от языка описания)
+    "werkstudent",
+    "praktikum",
+    "abschlussarbeit",
+    "duales studium",
     # Маркетологи
     "маркетолог",
     # Учёные / другие исследователи не по теме
@@ -79,16 +84,15 @@ COMPANY_BLACKLIST: set[str] = set()
 
 
 def _is_allowed_language(vacancy: dict) -> bool:
+    # Берём только description/snippet — заголовок слишком короткий для надёжного определения
     text = " ".join(filter(None, [
-        vacancy.get("title", ""),
         vacancy.get("snippet", ""),
         vacancy.get("description", ""),
     ]))
-    if not text or len(text) < 20:
+    if len(text) < 50:
         return True
     try:
         lang = detect(text)
-        # hh.ru возвращает русский текст — пропускаем, Adzuna/прочие — только английский
         return lang in ("en", "ru")
     except LangDetectException:
         return True
