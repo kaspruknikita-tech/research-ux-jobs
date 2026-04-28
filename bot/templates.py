@@ -45,16 +45,8 @@ def _first_sentence(text: str, max_len: int = 200) -> str:
     return cut
 
 
-def _smart_bullet(text: str, max_len: int = 65) -> str:
-    if ":" in text:
-        label = text.split(":")[0].strip()
-        if len(label) <= max_len:
-            return label
-    if len(text) > max_len and "," in text:
-        before_comma = text.split(",")[0].strip()
-        if 20 <= len(before_comma) <= max_len:
-            return before_comma
-    return text if len(text) <= max_len else text[:max_len].rsplit(" ", 1)[0] + "…"
+def _smart_bullet(text: str) -> str:
+    return text
 
 
 def _parse_sections(raw_html: str) -> dict:
