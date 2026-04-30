@@ -87,7 +87,7 @@ def _parse_sections(raw_html: str) -> dict:
             if is_header:
                 current = text.rstrip(":")
                 sections[current] = []
-            elif not strong and not intro:
+            elif not intro and not text.endswith("?") and not text.startswith("*") and not text.startswith("-"):
                 intro = _first_sentence(text)
 
         elif tag.name in ("strong", "b"):
@@ -157,15 +157,28 @@ def _build_post(vacancy: dict, apply_label: str, is_ru: bool) -> str:
                               "обязанност", "задач", "responsi", "duties",
                               "нужно будет делать", "будете делать", "нужно делать",
                               "что делать", "функции", "чем предстоит",
+                              "что предстоит", "тебе предстоит", "вам предстоит",
+                              "что ты будешь делать", "что вы будете делать",
+                              "о вакансии",
                               "what you'll do", "what you will do", "you will be responsible",
                               "role overview", "the role", "your role",
+                              "ищем специалист", "ищем кандидат", "который будет",
                           ])), None)
         reqs_key = next((k for k in sections if k != "__intro__" and k != tasks_key and
                          any(w in k.lower() for w in [
                              "требован", "require", "qualif", "опыт",
                              "нам важно", "для нас важно", "что важно",
-                             "ожидаем", "ищем", "нам нужен", "нам нужна",
+                             "ожидаем", "наши ожидания", "нам нужен", "нам нужна",
+                             "идеальный кандидат", "вы наш", "если у вас",
+                             "нам подойдёт", "нам подойдет",
+                             "кого мы ищем", "кого ищем",
+                             "будет плюсом", "будет преимуществом",
+                             "знания и навык", "необходимые знания",
+                             "мы ждем от", "мы ждём от", "ждем от тебя", "ждём от тебя",
+                             "ждем от вас", "ждём от вас", "что ждем", "что ждём",
+                             "для этого нужно", "что для этого",
                              "what we're looking for", "what you'll need", "you'll need",
+                             "what you bring", "you bring", "nice to have",
                              "to be successful", "about you", "who you are",
                          ])), None)
         cond_key = next((k for k in sections if k != "__intro__" and
