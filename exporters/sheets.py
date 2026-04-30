@@ -24,28 +24,28 @@ SCOPES = [
 ]
 
 
-def _get_sheet():
-    # Пробуем сначала переменную окружения (Railway),
-    # если нет - читаем из файла (локально)
+def _gc():
     creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
     if creds_json:
         creds_dict = json.loads(creds_json)
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-        gc = gspread.authorize(creds)
-    else:
-        gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
+        return gspread.authorize(creds)
+    return gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
 
-    spreadsheet = gc.open_by_key(config.GOOGLE_SHEET_ID)
+
+def _get_sheet(name: str = None):
+    sheet_name = name or config.GOOGLE_SHEET_NAME
+    spreadsheet = _gc().open_by_key(config.GOOGLE_SHEET_ID)
     try:
-        sheet = spreadsheet.worksheet(config.GOOGLE_SHEET_NAME)
+        sheet = spreadsheet.worksheet(sheet_name)
     except gspread.WorksheetNotFound:
         sheet = spreadsheet.add_worksheet(
-            title=config.GOOGLE_SHEET_NAME,
+            title=sheet_name,
             rows=2000,
-            cols=len(HEADERS)
+            cols=len(HEADERS),
         )
         sheet.append_row(HEADERS)
-        logger.info("Создан лист: %s", config.GOOGLE_SHEET_NAME)
+        logger.info("Создан лист: %s", sheet_name)
     return sheet
 
 
@@ -73,13 +73,12 @@ def _to_row(v: dict) -> list:
     ]
 
 
-def export_to_sheets(vacancies: list[dict]) -> None:
+def _export(vacancies: list[dict], sheet_name: str) -> None:
     if not vacancies:
-        logger.info("Нет вакансий для экспорта в Sheets")
         return
 
     try:
-        sheet = _get_sheet()
+        sheet = _get_sheet(sheet_name)
         _ensure_headers(sheet)
 
         existing_urls = set(sheet.col_values(12))
@@ -93,9 +92,15 @@ def export_to_sheets(vacancies: list[dict]) -> None:
 
         if new_rows:
             sheet.append_rows(new_rows, value_input_option="USER_ENTERED")
-            logger.info("Добавлено в Sheets: %d вакансий", len(new_rows))
-        else:
-            logger.info("Все вакансии уже есть в таблице")
+            logger.info("Добавлено в '%s': %d вакансий", sheet_name, len(new_rows))
 
     except Exception as e:
-        logger.error("Ошибка экспорта в Sheets: %s", e)
+        logger.error("Ошибка экспорта в '%s': %s", sheet_name, e)
+
+
+def export_to_sheets(vacancies: list[dict]) -> None:
+    _export(vacancies, config.GOOGLE_SHEET_NAME)
+
+
+def export_rejected_to_sheets(vacancies: list[dict]) -> None:
+    _export(vacancies, "Rejected")

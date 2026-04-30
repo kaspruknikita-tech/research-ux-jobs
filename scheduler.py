@@ -22,7 +22,7 @@ from parsers.weworkremotely import WeWorkRemotelyParser
 from parsers.workingnomads import WorkingNomadsParser
 from filters.stopwords import apply_filters
 from filters.dedup import is_duplicate
-from exporters.sheets import export_to_sheets
+from exporters.sheets import export_to_sheets, export_rejected_to_sheets
 
 logging.basicConfig(
     level=logging.INFO,
@@ -84,6 +84,7 @@ def run_cycle() -> dict:
     total_saved = 0
     total_filtered = 0
     saved_vacancies = []
+    rejected_vacancies = []
 
     for parser in ACTIVE_PARSERS:
         logger.info("Запускаем парсер: %s", parser.source_name)
@@ -100,6 +101,7 @@ def run_cycle() -> dict:
                 total_filtered += 1
                 v["status"] = "rejected"
                 database.insert_vacancy(v)
+                rejected_vacancies.append(v)
                 continue
 
             if v.get("source") == "adzuna":
@@ -121,6 +123,13 @@ def run_cycle() -> dict:
             export_to_sheets(saved_vacancies)
         except Exception:
             logger.exception("Экспорт в Sheets упал, продолжаем")
+
+    if rejected_vacancies:
+        logger.info("Экспортируем %d отклонённых в Rejected...", len(rejected_vacancies))
+        try:
+            export_rejected_to_sheets(rejected_vacancies)
+        except Exception:
+            logger.exception("Экспорт rejected в Sheets упал, продолжаем")
 
     logger.info("=== Цикл завершён ===\n")
     return {"parsed": total_parsed, "saved": total_saved}
