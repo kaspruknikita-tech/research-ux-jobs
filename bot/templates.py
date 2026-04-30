@@ -61,11 +61,22 @@ def _parse_sections(raw_html: str) -> dict:
     top_tags = [c for c in soup.children if hasattr(c, "name") and c.name]
     root = top_tags[0] if len(top_tags) == 1 and top_tags[0].name in ("section", "div", "article") else soup
 
+    def _iter_blocks(node):
+        """Плоский итератор: рекурсивно заходит в div/article/section-обёртки."""
+        for child in node.children:
+            if not hasattr(child, "name"):
+                yield child
+                continue
+            if child.name in ("div", "article", "section"):
+                yield from _iter_blocks(child)
+            else:
+                yield child
+
     sections = {}
     current = None
     intro = ""
 
-    for tag in root.children:
+    for tag in _iter_blocks(root):
         if not hasattr(tag, "name"):
             continue
 
@@ -77,21 +88,30 @@ def _parse_sections(raw_html: str) -> dict:
                 sections[current] = []
             continue
 
-        if tag.name == "p":
+        if tag.name in ("h2", "h3", "h4", "h5", "h6"):
+            text = tag.get_text().strip().rstrip(":")
+            if text and len(text) < 80:
+                current = text
+                sections[current] = []
+
+        elif tag.name == "p":
             strong = tag.find("strong") or tag.find("b")
             text = tag.get_text().strip()
             if not text:
                 continue
-            # Заголовок: короткий (<= 60 символов), не вопрос, есть bold или двоеточие в конце
             is_header = (strong and len(text) <= 60 and not text.endswith("?")) or text.endswith(":")
             if is_header:
                 current = text.rstrip(":")
                 sections[current] = []
+            elif current:
+                # Контентный параграф внутри секции (Arbeitnow, WeWorkRemotely и др.)
+                if not text.endswith("?") and len(text) > 20:
+                    sections[current].append(text)
             elif not intro and not text.endswith("?") and not text.startswith("*") and not text.startswith("-"):
                 intro = _first_sentence(text)
 
         elif tag.name in ("strong", "b"):
-            # Голый <strong> без <p> — тоже может быть заголовком раздела
+            # Голый <strong>/<b> без <p> — заголовок раздела
             text = tag.get_text().strip().rstrip(":")
             if text and len(text) < 80:
                 current = text
