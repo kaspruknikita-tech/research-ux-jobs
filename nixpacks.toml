@@ -1,5 +1,5 @@
 [phases.install]
 cmds = [
   "python -m venv --copies /opt/venv",
-  ". /opt/venv/bin/activate && pip install poetry==2.3.2 && poetry install --no-dev --no-interaction --no-ansi"
+  ". /opt/venv/bin/activate && pip install poetry==2.3.2 && poetry install --only main --no-interaction --no-ansi"
 ]
