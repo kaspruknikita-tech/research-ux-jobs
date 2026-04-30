@@ -30,13 +30,17 @@ class HimalayasParser(BaseParser):
         try:
             resp = requests.get(
                 API_URL,
-                headers={"User-Agent": "Mozilla/5.0"},
+                headers={
+                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                    "Accept": "application/json, text/plain, */*",
+                    "Accept-Language": "en-US,en;q=0.9",
+                },
                 timeout=15,
             )
             resp.raise_for_status()
             data = resp.json()
-        except requests.RequestException:
-            logger.exception("[remoteok] Ошибка запроса")
+        except requests.RequestException as e:
+            logger.error("[remoteok] Ошибка запроса: %s", e)
             return []
 
         result = []
