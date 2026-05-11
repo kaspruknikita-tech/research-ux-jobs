@@ -12,7 +12,7 @@ import config
 import database
 from bot.templates import format_ru, format_global
 from scoring import score_vacancy, PROMPT_VERSION
-from scoring.models import ScoringResult
+from scoring.models import PostEnrichment, ScoringResult
 
 logger = logging.getLogger(__name__)
 
@@ -75,12 +75,42 @@ def _keyboard(vacancy_id: int, channel: str) -> dict:
     }
 
 
+def _row_to_scoring_result(row: dict, vacancy_id: int) -> ScoringResult:
+    """Восстанавливает ScoringResult из строки vacancy_scores."""
+    enrich_data = row.get("post_enrichment")
+    post_enrichment = PostEnrichment(**enrich_data) if enrich_data else None
+    return ScoringResult(
+        vacancy_id=vacancy_id,
+        tier=row["tier"],
+        action=row["action"],
+        score=row["score"],
+        score_breakdown=row.get("score_breakdown") or {},
+        visa_sponsorship=row["visa_sponsorship"],
+        relocation_support=row["relocation_support"],
+        remote_policy=row.get("remote_policy", "unclear"),
+        salary_min=row.get("salary_min"),
+        salary_max=row.get("salary_max"),
+        salary_currency=row.get("salary_currency"),
+        experience_level=row.get("experience_level", "unclear"),
+        verbatim_evidence=row.get("verbatim_evidence") or {},
+        pre_filter_blocked=bool(row.get("pre_filter_blocked", False)),
+        regex_completeness_score=0.0,
+        enrichment_used=post_enrichment is not None,
+        completeness_score=1.0,
+        needs_enrichment=False,
+        post_enrichment=post_enrichment,
+        reason=row.get("reason", ""),
+        model_used=row.get("model_used", ""),
+        latency_ms=row.get("latency_ms", 0),
+    )
+
+
 def _get_or_score(vacancy: dict) -> ScoringResult | None:
     """Берёт скор из БД. Если нет — считает заново."""
     try:
         row = database.get_latest_vacancy_score(vacancy["id"])
         if row:
-            return None  # скор есть, но в БД он plain dict — вернём None, footer строим из row
+            return _row_to_scoring_result(row, vacancy["id"])
         result = score_vacancy(vacancy)
         database.save_vacancy_score(result, PROMPT_VERSION)
         return result

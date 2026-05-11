@@ -110,9 +110,9 @@ def save_vacancy_score(result, prompt_version: str) -> None:
                      visa_sponsorship, relocation_support, remote_policy,
                      salary_min, salary_max, salary_currency, experience_level,
                      verbatim_evidence, pre_filter_blocked, reason,
-                     model_used, latency_ms)
+                     model_used, latency_ms, post_enrichment)
                 VALUES
-                    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     result.vacancy_id, prompt_version,
@@ -124,6 +124,7 @@ def save_vacancy_score(result, prompt_version: str) -> None:
                     json.dumps(result.verbatim_evidence),
                     result.pre_filter_blocked, result.reason,
                     result.model_used or None, result.latency_ms or None,
+                    json.dumps(result.post_enrichment.model_dump()) if result.post_enrichment else None,
                 ),
             )
         conn.commit()
