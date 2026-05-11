@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup
 
 import config
 import database
+from scoring import score_vacancy, PROMPT_VERSION
 from parsers.adzuna import AdzunaParser
 from parsers.hh import HHParser
 from parsers.telegram import TelegramChannelParser
@@ -109,6 +110,13 @@ def run_cycle() -> dict:
 
             new_id = database.insert_vacancy(v)
             if new_id:
+                v["id"] = new_id
+                try:
+                    result = score_vacancy(v)
+                    database.save_vacancy_score(result, PROMPT_VERSION)
+                    v["_scoring"] = result.model_dump()
+                except Exception:
+                    logger.warning("Скоринг не удался для вакансии %s", new_id)
                 total_saved += 1
                 saved_vacancies.append(v)
 

@@ -3,6 +3,7 @@
 Создаёт таблицу vacancies, умеет вставлять/читать/обновлять записи.
 """
 
+import json
 import logging
 import os
 from datetime import datetime, timezone
@@ -57,6 +58,75 @@ def init_db() -> None:
             """)
         conn.commit()
         logger.info("База данных инициализирована (PostgreSQL)")
+    finally:
+        conn.close()
+    init_vacancy_scores()
+
+
+def init_vacancy_scores() -> None:
+    """Создаёт таблицу vacancy_scores, если её нет."""
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS vacancy_scores (
+                    id               SERIAL PRIMARY KEY,
+                    vacancy_id       INTEGER NOT NULL REFERENCES vacancies(id),
+                    scored_at        TIMESTAMP DEFAULT NOW(),
+                    prompt_version   TEXT NOT NULL,
+                    tier             VARCHAR(1) NOT NULL,
+                    action           TEXT NOT NULL,
+                    score            INTEGER NOT NULL,
+                    score_breakdown  JSONB,
+                    visa_sponsorship TEXT,
+                    relocation_support TEXT,
+                    remote_policy    TEXT,
+                    salary_min       INTEGER,
+                    salary_max       INTEGER,
+                    salary_currency  TEXT,
+                    experience_level TEXT,
+                    verbatim_evidence JSONB,
+                    pre_filter_blocked BOOLEAN DEFAULT FALSE,
+                    reason           TEXT
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS vacancy_scores_vacancy_id_idx ON vacancy_scores(vacancy_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS vacancy_scores_tier_idx ON vacancy_scores(tier)")
+            cur.execute("CREATE INDEX IF NOT EXISTS vacancy_scores_scored_at_idx ON vacancy_scores(scored_at)")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def save_vacancy_score(result, prompt_version: str) -> None:
+    """Сохраняет ScoringResult в vacancy_scores. Каждый вызов — новая строка."""
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO vacancy_scores
+                    (vacancy_id, prompt_version, tier, action, score, score_breakdown,
+                     visa_sponsorship, relocation_support, remote_policy,
+                     salary_min, salary_max, salary_currency, experience_level,
+                     verbatim_evidence, pre_filter_blocked, reason,
+                     model_used, latency_ms)
+                VALUES
+                    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    result.vacancy_id, prompt_version,
+                    result.tier, result.action, result.score,
+                    json.dumps(result.score_breakdown),
+                    result.visa_sponsorship, result.relocation_support, result.remote_policy,
+                    result.salary_min, result.salary_max, result.salary_currency,
+                    result.experience_level,
+                    json.dumps(result.verbatim_evidence),
+                    result.pre_filter_blocked, result.reason,
+                    result.model_used or None, result.latency_ms or None,
+                ),
+            )
+        conn.commit()
     finally:
         conn.close()
 
@@ -226,6 +296,21 @@ def mark_posted(vacancy_id: int) -> None:
                 (now, vacancy_id),
             )
         conn.commit()
+    finally:
+        conn.close()
+
+
+def get_latest_vacancy_score(vacancy_id: int) -> dict | None:
+    """Возвращает последний скор вакансии из vacancy_scores или None."""
+    conn = _get_connection()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT * FROM vacancy_scores WHERE vacancy_id = %s ORDER BY scored_at DESC LIMIT 1",
+                (vacancy_id,),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
     finally:
         conn.close()
 

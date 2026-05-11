@@ -142,7 +142,7 @@ def _fmt_conditions(items: list, n: int = 5) -> str:
     return ", ".join(i.split("(")[0].split(",")[0].strip().rstrip(";.") for i in items[:n])
 
 
-def _build_post(vacancy: dict, apply_label: str, is_ru: bool) -> str:
+def _build_post(vacancy: dict, apply_label: str, is_ru: bool, enrichment: dict | None = None) -> str:
     title = html.escape(vacancy.get("title") or "")
     company = html.escape(vacancy.get("company") or "")
     location = html.escape(vacancy.get("location") or "")
@@ -159,6 +159,8 @@ def _build_post(vacancy: dict, apply_label: str, is_ru: bool) -> str:
         lines.append("📍 " + " · ".join(info_parts))
 
     salary = _format_salary(vacancy)
+    if not salary and enrichment and enrichment.get("formatted_salary"):
+        salary = enrichment["formatted_salary"]
     if salary:
         lines.append(f"💰 {salary}")
 
@@ -169,8 +171,10 @@ def _build_post(vacancy: dict, apply_label: str, is_ru: bool) -> str:
         sections = _parse_sections(description)
 
         intro = sections.get("__intro__")
+        if not intro and enrichment and enrichment.get("summary"):
+            intro = enrichment["summary"]
         if intro:
-            lines += ["", "<b>О роли</b>", html.escape(intro)]
+            lines += ["", f"<b>{'О роли' if is_ru else 'About the role'}</b>", html.escape(intro)]
 
         tasks_key = next((k for k in sections if k != "__intro__" and
                           any(w in k.lower() for w in [
@@ -217,22 +221,39 @@ def _build_post(vacancy: dict, apply_label: str, is_ru: bool) -> str:
         if reqs_key and sections[reqs_key]:
             lines += ["", f"<b>{'Требования' if is_ru else 'Requirements'}</b>",
                       html.escape(_fmt_bullets(sections[reqs_key]))]
+        elif enrichment and enrichment.get("key_requirements"):
+            lines += ["", f"<b>{'Требования' if is_ru else 'Requirements'}</b>",
+                      html.escape(_fmt_bullets(enrichment["key_requirements"]))]
 
         if cond_key and sections[cond_key]:
             lines += ["", f"<b>{'Условия' if is_ru else 'Benefits'}</b>",
                       html.escape(_fmt_conditions(sections[cond_key]))]
+        elif enrichment and enrichment.get("key_benefits"):
+            lines += ["", f"<b>{'Условия' if is_ru else 'Benefits'}</b>",
+                      html.escape(_fmt_conditions(enrichment["key_benefits"]))]
 
     elif snippet:
         lines += ["", html.escape(snippet)]
+    elif enrichment and enrichment.get("summary"):
+        label = "О роли" if is_ru else "About the role"
+        lines += ["", f"<b>{label}</b>", html.escape(enrichment["summary"])]
+        if enrichment.get("key_requirements"):
+            reqs_label = "Требования" if is_ru else "Requirements"
+            lines += ["", f"<b>{reqs_label}</b>",
+                      html.escape(_fmt_bullets(enrichment["key_requirements"]))]
+        if enrichment.get("key_benefits"):
+            cond_label = "Условия" if is_ru else "Benefits"
+            lines += ["", f"<b>{cond_label}</b>",
+                      html.escape(_fmt_conditions(enrichment["key_benefits"]))]
 
     lines += ["", f'🔗 <a href="{vacancy["url"]}">{apply_label}</a>']
 
     return "\n".join(lines)
 
 
-def format_ru(vacancy: dict) -> str:
-    return _build_post(vacancy, "Откликнуться на hh.ru", is_ru=True)
+def format_ru(vacancy: dict, enrichment: dict | None = None) -> str:
+    return _build_post(vacancy, "Откликнуться на hh.ru", is_ru=True, enrichment=enrichment)
 
 
-def format_global(vacancy: dict) -> str:
-    return _build_post(vacancy, "Apply", is_ru=False)
+def format_global(vacancy: dict, enrichment: dict | None = None) -> str:
+    return _build_post(vacancy, "Apply", is_ru=False, enrichment=enrichment)

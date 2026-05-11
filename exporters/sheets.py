@@ -15,7 +15,8 @@ logger = logging.getLogger(__name__)
 HEADERS = [
     "external_id", "Источник", "Название", "Компания",
     "Зарплата мин", "Зарплата макс", "Валюта",
-    "Локация", "Формат работы", "Канал", "Статус", "Ссылка", "Дата парсинга"
+    "Локация", "Формат работы", "Канал", "Статус", "Ссылка", "Дата парсинга",
+    "Tier", "Score", "Виза", "Релокация", "Remote", "Completeness", "Reason",
 ]
 
 SCOPES = [
@@ -56,6 +57,7 @@ def _ensure_headers(sheet):
 
 
 def _to_row(v: dict) -> list:
+    scoring = v.get("_scoring") or {}
     return [
         v.get("external_id", ""),
         v.get("source", "hh.ru"),
@@ -70,6 +72,13 @@ def _to_row(v: dict) -> list:
         v.get("status", "new"),
         v.get("url", ""),
         v.get("parsed_at", datetime.now().isoformat()),
+        scoring.get("tier", ""),
+        scoring.get("score", "") if scoring.get("score") is not None else "",
+        scoring.get("visa_sponsorship", ""),
+        scoring.get("relocation_support", ""),
+        scoring.get("remote_policy", ""),
+        scoring.get("completeness_score", "") if scoring.get("completeness_score") is not None else "",
+        scoring.get("reason", ""),
     ]
 
 

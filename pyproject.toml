@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Telegram-бот для публикации вакансий исследователей (UX/Data/Market Research)"
 authors = ["Your Team <team@example.com>"]
 readme = "README.md"
-packages = [{include = "parsers"}, {include = "filters"}, {include = "bot"}]
+packages = [{include = "parsers"}, {include = "filters"}, {include = "bot"}, {include = "scoring"}]
 
 [tool.poetry.dependencies]
 python = "^3.12"
@@ -17,6 +17,8 @@ psycopg2-binary = "^2.9"
 beautifulsoup4 = ">=4.12"
 telethon = "^1.36"
 langdetect = "^1.0.9"
+openai = ">=1.0"
+pydantic = ">=2.0"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.5"
