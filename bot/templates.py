@@ -139,7 +139,7 @@ def _fmt_bullets(items: list, n: int = 5) -> str:
 
 
 def _fmt_conditions(items: list, n: int = 5) -> str:
-    return ", ".join(i.split("(")[0].split(",")[0].strip().rstrip(";.") for i in items[:n])
+    return "\n".join("— " + i.strip().rstrip(";.") for i in items[:n])
 
 
 def _build_post(vacancy: dict, apply_label: str, is_ru: bool, enrichment: dict | None = None) -> str:
