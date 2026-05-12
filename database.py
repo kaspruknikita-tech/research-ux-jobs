@@ -102,32 +102,53 @@ def save_vacancy_score(result, prompt_version: str) -> None:
     """Сохраняет ScoringResult в vacancy_scores. Каждый вызов — новая строка."""
     conn = _get_connection()
     try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO vacancy_scores
-                    (vacancy_id, prompt_version, tier, action, score, score_breakdown,
-                     visa_sponsorship, relocation_support, remote_policy,
-                     salary_min, salary_max, salary_currency, experience_level,
-                     verbatim_evidence, pre_filter_blocked, reason,
-                     model_used, latency_ms, post_enrichment)
-                VALUES
-                    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """,
-                (
-                    result.vacancy_id, prompt_version,
-                    result.tier, result.action, result.score,
-                    json.dumps(result.score_breakdown),
-                    result.visa_sponsorship, result.relocation_support, result.remote_policy,
-                    result.salary_min, result.salary_max, result.salary_currency,
-                    result.experience_level,
-                    json.dumps(result.verbatim_evidence),
-                    result.pre_filter_blocked, result.reason,
-                    result.model_used or None, result.latency_ms or None,
-                    json.dumps(result.post_enrichment.model_dump()) if result.post_enrichment else None,
-                ),
-            )
-        conn.commit()
+        enrichment_json = (
+            json.dumps(result.post_enrichment.model_dump()) if result.post_enrichment else None
+        )
+        base_args = (
+            result.vacancy_id, prompt_version,
+            result.tier, result.action, result.score,
+            json.dumps(result.score_breakdown),
+            result.visa_sponsorship, result.relocation_support, result.remote_policy,
+            result.salary_min, result.salary_max, result.salary_currency,
+            result.experience_level,
+            json.dumps(result.verbatim_evidence),
+            result.pre_filter_blocked, result.reason,
+            result.model_used or None, result.latency_ms or None,
+        )
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO vacancy_scores
+                        (vacancy_id, prompt_version, tier, action, score, score_breakdown,
+                         visa_sponsorship, relocation_support, remote_policy,
+                         salary_min, salary_max, salary_currency, experience_level,
+                         verbatim_evidence, pre_filter_blocked, reason,
+                         model_used, latency_ms, post_enrichment)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    """,
+                    base_args + (enrichment_json,),
+                )
+            conn.commit()
+        except Exception:
+            # Колонка post_enrichment ещё не добавлена (миграция 003 не применена)
+            conn.rollback()
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO vacancy_scores
+                        (vacancy_id, prompt_version, tier, action, score, score_breakdown,
+                         visa_sponsorship, relocation_support, remote_policy,
+                         salary_min, salary_max, salary_currency, experience_level,
+                         verbatim_evidence, pre_filter_blocked, reason,
+                         model_used, latency_ms)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    """,
+                    base_args,
+                )
+            conn.commit()
+            logger.warning("save_vacancy_score: post_enrichment не сохранён — примените миграцию 003")
     finally:
         conn.close()
 
