@@ -117,8 +117,8 @@ def apply_filters(vacancy: dict) -> bool:
         logger.debug("Не прошёл белый список: %s", vacancy.get("title"))
         return False
 
-    # 3. Язык — только английский
-    if not _is_allowed_language(vacancy):
+    # 3. Язык — только английский/русский (Greenhouse всегда EN, пропускаем)
+    if vacancy.get("source") != "greenhouse" and not _is_allowed_language(vacancy):
         logger.debug("Не английский язык: %s", vacancy.get("title"))
         return False
 
