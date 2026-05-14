@@ -21,6 +21,7 @@ from parsers.himalayas import HimalayasParser
 from parsers.remotive import RemotiveParser
 from parsers.weworkremotely import WeWorkRemotelyParser
 from parsers.workingnomads import WorkingNomadsParser
+from parsers.greenhouse import GreenhouseParser
 from filters.stopwords import apply_filters
 from filters.dedup import is_duplicate
 from exporters.sheets import export_to_sheets, export_rejected_to_sheets
@@ -40,6 +41,7 @@ ACTIVE_PARSERS = [
     RemotiveParser(),
     WeWorkRemotelyParser(),
     WorkingNomadsParser(),
+    GreenhouseParser(),
 ]
 
 
