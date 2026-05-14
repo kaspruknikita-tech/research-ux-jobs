@@ -60,6 +60,11 @@ def _parse_sections(raw_html: str) -> dict:
     if not raw_html:
         return {}
 
+    # Greenhouse stores descriptions as pre-escaped HTML entities (&lt;p&gt; instead of <p>)
+    if "&lt;" in raw_html and "<" not in raw_html:
+        import html as _html
+        raw_html = _html.unescape(raw_html)
+
     soup = BeautifulSoup(raw_html, "html.parser")
 
     # Adzuna оборачивает контент в <section> или <div> — заходим внутрь
@@ -113,7 +118,7 @@ def _parse_sections(raw_html: str) -> dict:
             text = tag.get_text().strip()
             if not text:
                 continue
-            is_header = (strong and len(text) <= 60 and not text.endswith("?")) or text.endswith(":")
+            is_header = (strong and len(text) <= 60) or text.endswith(":")
             if is_header:
                 current = text.rstrip(":")
                 sections[current] = []
