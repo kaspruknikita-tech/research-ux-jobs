@@ -50,8 +50,16 @@ def _first_sentence(text: str, max_len: int = 200) -> str:
     return cut
 
 
+_ICON_RE = __import__("re").compile(r"\s*_[a-z][a-z_]*_\s*")
+
+
+def _clean(text: str) -> str:
+    """Removes Material Design / Adzuna icon tokens like _place_, _corporate_fare_."""
+    return _ICON_RE.sub(" ", text).strip()
+
+
 def _smart_bullet(text: str) -> str:
-    return text
+    return _clean(text)
 
 
 def _parse_sections(raw_html: str) -> dict:
@@ -204,7 +212,7 @@ def _build_post(vacancy: dict, apply_label: str, is_ru: bool, enrichment: dict |
                 summary = BeautifulSoup(summary, "html.parser").get_text(strip=True)
             intro = summary
         if intro:
-            lines += ["", f"<b>{'О роли' if is_ru else 'About the role'}</b>", html.escape(intro)]
+            lines += ["", f"<b>{'О роли' if is_ru else 'About the role'}</b>", html.escape(_clean(intro))]
 
         tasks_key = next((k for k in sections if k != "__intro__" and
                           any(w in _normalize(k.lower()) for w in [
