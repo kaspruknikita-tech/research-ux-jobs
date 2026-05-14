@@ -121,7 +121,7 @@ def _parse_sections(raw_html: str) -> dict:
                 # Контентный параграф внутри секции (Arbeitnow, WeWorkRemotely и др.)
                 if not text.endswith("?") and len(text) > 20:
                     sections[current].append(text)
-            elif not intro and not text.endswith("?") and not text.startswith("*") and not text.startswith("-"):
+            elif not intro and len(text) >= 40 and not text.endswith("?") and not text.startswith("*") and not text.startswith("-"):
                 intro = _first_sentence(text)
 
         elif tag.name in ("strong", "b"):
