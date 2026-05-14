@@ -169,12 +169,23 @@ def _parse_sections(raw_html: str) -> dict:
     return sections
 
 
+def _expand_bullets(items: list) -> list:
+    """Split items that use ● as inline sub-bullets (hh.ru style)."""
+    out = []
+    for item in items:
+        if "●" in item:
+            out.extend(p.strip() for p in item.split("●") if p.strip())
+        else:
+            out.append(item)
+    return out
+
+
 def _fmt_bullets(items: list, n: int = 6) -> str:
-    return "\n".join("— " + _smart_bullet(i) for i in items[:n])
+    return "\n".join("— " + _smart_bullet(i) for i in _expand_bullets(items)[:n])
 
 
 def _fmt_conditions(items: list, n: int = 6) -> str:
-    return "\n".join("— " + i.strip().rstrip(";.") for i in items[:n])
+    return "\n".join("— " + i.strip().rstrip(";.") for i in _expand_bullets(items)[:n])
 
 
 def _build_post(vacancy: dict, apply_label: str, is_ru: bool, enrichment: dict | None = None) -> str:

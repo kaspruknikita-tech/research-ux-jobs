@@ -110,9 +110,9 @@ def _row_to_scoring_result(row: dict, vacancy_id: int) -> ScoringResult:
         completeness_score=1.0,
         needs_enrichment=False,
         post_enrichment=post_enrichment,
-        reason=row.get("reason", ""),
-        model_used=row.get("model_used", ""),
-        latency_ms=row.get("latency_ms", 0),
+        reason=row.get("reason") or "",
+        model_used=row.get("model_used") or "",
+        latency_ms=row.get("latency_ms") or 0,
     )
 
 
