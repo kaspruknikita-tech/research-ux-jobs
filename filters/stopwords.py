@@ -28,6 +28,7 @@ WHITELIST = [
 BLACKLIST = [
     # Дизайнеры (не исследователи)
     "designer",
+    "design intern",
     "дизайнер",
     "copywriter",
     "UX редактор",

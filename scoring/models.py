@@ -19,6 +19,7 @@ class ScoringInput(BaseModel):
 
 class PostEnrichment(BaseModel):
     summary: str
+    key_tasks: list[str] = []
     key_requirements: list[str]
     key_benefits: list[str]
     formatted_salary: str | None

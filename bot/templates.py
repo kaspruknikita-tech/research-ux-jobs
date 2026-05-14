@@ -6,6 +6,11 @@
 import html
 from bs4 import BeautifulSoup
 
+
+def _normalize(text: str) -> str:
+    """Заменяет типографские апострофы/кавычки на ASCII для сравнения."""
+    return text.replace("‘", "'").replace("’", "'").replace("“", '"').replace("”", '"')
+
 CURRENCY_SYMBOLS = {
     "RUR": "₽",
     "RUB": "₽",
@@ -80,17 +85,26 @@ def _parse_sections(raw_html: str) -> dict:
         if not hasattr(tag, "name"):
             continue
 
-        # Текстовая нода — может быть заголовком (напр. "Highlights", "About the role")
+        # Текстовая нода — заголовок или буллет-пункт через символ ●/•
         if tag.name is None:
             text = str(tag).strip()
-            if text and len(text) < 80 and not text.endswith("?") and text not in sections:
+            if not text:
+                continue
+            if text[0] in "●•·◦▪▸►★":
+                # Символьный буллет (Adzuna и др.) — добавляем как пункт в текущую секцию
+                if current is not None:
+                    item = text.lstrip("●•·◦▪▸►★ ").strip().rstrip(";.")
+                    if item and len(item) > 3:
+                        sections[current].append(item)
+            elif len(text) < 80 and not text.endswith("?") and text not in sections:
                 current = text.rstrip(":")
                 sections[current] = []
             continue
 
         if tag.name in ("h2", "h3", "h4", "h5", "h6"):
             text = tag.get_text().strip().rstrip(":")
-            if text and len(text) < 80:
+            # Заголовки с ! — тегслоганы (напр. "Help shape...!"), не разделы
+            if text and len(text) < 80 and not text.endswith("!"):
                 current = text
                 sections[current] = []
 
@@ -125,7 +139,15 @@ def _parse_sections(raw_html: str) -> dict:
 
     if intro:
         sections["__intro__"] = intro
-    elif not sections:
+    elif not any(v for k, v in sections.items() if k == "__intro__"):
+        # Если intro не нашли явно — берём первый длинный параграф из любой секции
+        for k, items in sections.items():
+            if items and len(items[0]) >= 80:
+                sections["__intro__"] = _first_sentence(items[0])
+                sections[k] = items[1:]  # убираем его из секции чтобы не дублировать
+                break
+
+    if not sections:
         # Plain text без HTML-структуры (например, Adzuna)
         plain = soup.get_text(" ", strip=True)
         if plain:
@@ -134,11 +156,11 @@ def _parse_sections(raw_html: str) -> dict:
     return sections
 
 
-def _fmt_bullets(items: list, n: int = 5) -> str:
+def _fmt_bullets(items: list, n: int = 6) -> str:
     return "\n".join("— " + _smart_bullet(i) for i in items[:n])
 
 
-def _fmt_conditions(items: list, n: int = 5) -> str:
+def _fmt_conditions(items: list, n: int = 6) -> str:
     return "\n".join("— " + i.strip().rstrip(";.") for i in items[:n])
 
 
@@ -172,12 +194,15 @@ def _build_post(vacancy: dict, apply_label: str, is_ru: bool, enrichment: dict |
 
         intro = sections.get("__intro__")
         if not intro and enrichment and enrichment.get("summary"):
-            intro = enrichment["summary"]
+            summary = enrichment["summary"]
+            if "<" in summary:
+                summary = BeautifulSoup(summary, "html.parser").get_text(strip=True)
+            intro = summary
         if intro:
             lines += ["", f"<b>{'О роли' if is_ru else 'About the role'}</b>", html.escape(intro)]
 
         tasks_key = next((k for k in sections if k != "__intro__" and
-                          any(w in k.lower() for w in [
+                          any(w in _normalize(k.lower()) for w in [
                               "обязанност", "задач", "responsi", "duties",
                               "нужно будет делать", "будете делать", "нужно делать",
                               "что делать", "функции", "чем предстоит",
@@ -185,11 +210,13 @@ def _build_post(vacancy: dict, apply_label: str, is_ru: bool, enrichment: dict |
                               "что ты будешь делать", "что вы будете делать",
                               "о вакансии",
                               "what you'll do", "what you will do", "you will be responsible",
+                              "what you'll be doing", "you'll be doing", "you will be doing",
+                              "what you'll focus", "focus on", "you will focus",
                               "role overview", "the role", "your role",
                               "ищем специалист", "ищем кандидат", "который будет",
                           ])), None)
         reqs_key = next((k for k in sections if k != "__intro__" and k != tasks_key and
-                         any(w in k.lower() for w in [
+                         any(w in _normalize(k.lower()) for w in [
                              "требован", "require", "qualif", "опыт",
                              "нам важно", "для нас важно", "что важно",
                              "ожидаем", "наши ожидания", "нам нужен", "нам нужна",
@@ -201,12 +228,15 @@ def _build_post(vacancy: dict, apply_label: str, is_ru: bool, enrichment: dict |
                              "мы ждем от", "мы ждём от", "ждем от тебя", "ждём от тебя",
                              "ждем от вас", "ждём от вас", "что ждем", "что ждём",
                              "для этого нужно", "что для этого",
-                             "what we're looking for", "what you'll need", "you'll need",
-                             "what you bring", "you bring", "nice to have",
+                             "what we're looking for", "what we are looking for",
+                             "what you'll need", "you'll need",
+                             "what you bring", "you bring", "you should bring", "bring to the table",
+                             "what you should", "should have", "ideally you",
+                             "must have", "must-have", "essential", "requirements",
                              "to be successful", "about you", "who you are",
                          ])), None)
         cond_key = next((k for k in sections if k != "__intro__" and
-                         any(w in k.lower() for w in [
+                         any(w in _normalize(k.lower()) for w in [
                              "услови", "offer", "benefit", "мы предлага",
                              "предлагаем", "работа с нами", "у нас вы",
                              "что мы даём", "что даём", "что получите",
@@ -214,16 +244,19 @@ def _build_post(vacancy: dict, apply_label: str, is_ru: bool, enrichment: dict |
                              "highlights",
                          ])), None)
 
-        if tasks_key and sections[tasks_key]:
+        tasks_items = (sections.get(tasks_key) or []) if tasks_key else []
+        if len(tasks_items) < 2 and enrichment and enrichment.get("key_tasks"):
+            tasks_items = enrichment["key_tasks"]
+        if len(tasks_items) >= 2:
             lines += ["", f"<b>{'Задачи' if is_ru else 'Responsibilities'}</b>",
-                      html.escape(_fmt_bullets(sections[tasks_key]))]
+                      html.escape(_fmt_bullets(tasks_items))]
 
-        if reqs_key and sections[reqs_key]:
+        reqs_items = (sections.get(reqs_key) or []) if reqs_key else []
+        if len(reqs_items) < 2 and enrichment and enrichment.get("key_requirements"):
+            reqs_items = enrichment["key_requirements"]
+        if len(reqs_items) >= 2:
             lines += ["", f"<b>{'Требования' if is_ru else 'Requirements'}</b>",
-                      html.escape(_fmt_bullets(sections[reqs_key]))]
-        elif enrichment and enrichment.get("key_requirements"):
-            lines += ["", f"<b>{'Требования' if is_ru else 'Requirements'}</b>",
-                      html.escape(_fmt_bullets(enrichment["key_requirements"]))]
+                      html.escape(_fmt_bullets(reqs_items))]
 
         if cond_key and sections[cond_key]:
             lines += ["", f"<b>{'Условия' if is_ru else 'Benefits'}</b>",

@@ -18,6 +18,11 @@ logger = logging.getLogger(__name__)
 
 _SEND_DELAY = 3.5
 _TIER_ICONS = {"S": "⭐", "A": "🔵", "B": "🟡", "C": "🔴"}
+_VERBATIM_LABELS = {
+    "visa_sponsorship": "Виза",
+    "relocation_support": "Релокация",
+    "remote_policy": "Удалёнка",
+}
 
 
 def _api(method: str, **kwargs) -> dict:
@@ -60,6 +65,12 @@ def _scoring_footer(result: ScoringResult) -> str:
     lines = [" | ".join(parts)]
     if result.reason:
         lines.append(f"💬 {result.reason}")
+
+    for key, quote in (result.verbatim_evidence or {}).items():
+        if quote:
+            label = _VERBATIM_LABELS.get(key, key)
+            lines.append(f"📌 {label}: «{quote}»")
+
     if result.needs_enrichment:
         lines.append("⚠️ Неполные данные, проверь вручную")
 

@@ -331,3 +331,130 @@ def test_llm_all_models_fail_raises():
 
         with pytest.raises(RuntimeError, match="All LLM models failed"):
             call_with_fallback([{"role": "user", "content": "test"}], 1, "test")
+
+
+# ---------------------------------------------------------------------------
+# validate_llm_output — некорректные ответы LLM
+# ---------------------------------------------------------------------------
+
+def test_validator_handles_none():
+    result = validate_llm_output(None, "some text", enrichment_used=False)
+    assert result["visa_sponsorship"] == "unclear"
+    assert result["score"] == 0
+    assert result["reason"] == ""
+
+
+def test_validator_handles_incomplete_json():
+    """JSON без обязательных полей — все заполняются дефолтами."""
+    result = validate_llm_output({"score": 7}, "some text", enrichment_used=False)
+    assert result["score"] == 7
+    assert result["visa_sponsorship"] == "unclear"
+    assert result["relocation_support"] == "unclear"
+    assert result["remote_policy"] == "unclear"
+    assert result["experience_level"] == "unclear"
+
+
+def test_validator_handles_wrong_field_names():
+    """Неправильные имена полей — все заменяются дефолтами."""
+    raw = {"sponsorship": "yes", "reloc": "yes", "remot": "global", "scor": 8}
+    result = validate_llm_output(raw, "some text", enrichment_used=False)
+    assert result["visa_sponsorship"] == "unclear"
+    assert result["relocation_support"] == "unclear"
+    assert result["score"] == 0
+
+
+def test_validator_clamps_score_out_of_range():
+    raw = {"score": 999, "visa_sponsorship": "unclear", "relocation_support": "unclear",
+           "remote_policy": "unclear", "verbatim_evidence": {}}
+    assert validate_llm_output(raw, "", False)["score"] == 10
+
+    raw2 = {**raw, "score": -100}
+    assert validate_llm_output(raw2, "", False)["score"] == 0
+
+
+def test_validator_normalizes_invalid_enum_values():
+    """Невалидные enum-значения заменяются на 'unclear'."""
+    raw = {
+        "visa_sponsorship": "maybe",
+        "relocation_support": "possibly",
+        "remote_policy": "remote",      # не входит в допустимые
+        "experience_level": "expert",   # не входит в допустимые
+        "score": 5,
+    }
+    result = validate_llm_output(raw, "", enrichment_used=False)
+    assert result["visa_sponsorship"] == "unclear"
+    assert result["relocation_support"] == "unclear"
+    assert result["remote_policy"] == "unclear"
+    assert result["experience_level"] == "unclear"
+
+
+def test_validator_normalizes_reason_wrong_format():
+    """reason как dict/list/None → преобразуется в строку."""
+    result_dict = validate_llm_output({"reason": {"text": "ok"}}, "", False)
+    assert isinstance(result_dict["reason"], str)
+
+    result_list = validate_llm_output({"reason": ["a", "b"]}, "", False)
+    assert isinstance(result_list["reason"], str)
+
+    result_none = validate_llm_output({"reason": None}, "", False)
+    assert result_none["reason"] == ""
+
+
+def test_validator_handles_verbatim_not_dict():
+    """verbatim_evidence как строка или None — не падает."""
+    result = validate_llm_output({"verbatim_evidence": "some string"}, "some string", False)
+    assert isinstance(result["verbatim_evidence"], dict)
+
+    result2 = validate_llm_output({"verbatim_evidence": None}, "", False)
+    assert result2["verbatim_evidence"] == {}
+
+
+# ---------------------------------------------------------------------------
+# call_with_fallback — невалидный JSON от LLM
+# ---------------------------------------------------------------------------
+
+def _mock_llm_response(content: str):
+    resp = MagicMock()
+    resp.usage = None
+    resp.choices[0].message.content = content
+    return resp
+
+
+def _score_vacancy_with_mock_content(content: str) -> "ScoringResult | None":
+    """Запускает score_vacancy с замоканным LLM возвращающим content."""
+    from scoring import score_vacancy
+    vacancy = {
+        "id": 99, "source": "remotive",
+        "title": "UX Researcher", "company": "Test",
+        "description": "Some description about UX research role.",
+        "location": "Remote",
+    }
+    with patch.dict("os.environ", _FAKE_ENV), \
+         patch("scoring.llm_scorer.OpenAI") as MockOpenAI:
+        instance = MagicMock()
+        instance.chat.completions.create.return_value = _mock_llm_response(content)
+        MockOpenAI.return_value = instance
+        from bot.moderator import _get_or_score
+        return _get_or_score(vacancy)
+
+
+@pytest.mark.parametrize("bad_content,description", [
+    ("Sorry, I cannot process this.", "plain text"),
+    ("", "empty string"),
+    ("null", "JSON null"),
+    ('{"score": 5}', "incomplete JSON — missing required fields"),
+    ('{"sponsorship": "yes", "visa": "yes"}', "wrong field names"),
+    ('{"score": 999, "visa_sponsorship": "yes"}', "score out of range"),
+    ('{"score": 5, "reason": {"nested": "dict"}}', "reason as dict"),
+])
+def test_score_vacancy_bad_llm_response_no_crash(bad_content, description):
+    """score_vacancy не падает при любом плохом ответе LLM — возвращает None или ScoringResult."""
+    result = _score_vacancy_with_mock_content(bad_content)
+    # Либо None (LLM полностью упал), либо валидный ScoringResult
+    from scoring.models import ScoringResult
+    assert result is None or isinstance(result, ScoringResult), \
+        f"[{description}] Ожидали None или ScoringResult, получили {type(result)}"
+    if isinstance(result, ScoringResult):
+        assert result.tier in ("S", "A", "B", "C")
+        assert 0 <= result.score <= 10
+        assert isinstance(result.reason, str)

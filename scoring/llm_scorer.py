@@ -59,6 +59,7 @@ _ENRICH_INSTRUCTIONS = """
 The job post is missing some fields needed to publish it. Extract or infer them from the text.
 
 - post_enrichment.summary: 1–2 sentences in Russian — who they're looking for and why
+- post_enrichment.key_tasks: 3–5 bullet points in the original language — main responsibilities/duties
 - post_enrichment.key_requirements: 3–5 bullet points in the original language of the posting
 - post_enrichment.key_benefits: 2–4 bullet points in Russian (remote/visa/salary/relocation)
 - post_enrichment.formatted_salary: formatted string like "$90k–$130k" or null if not mentioned
@@ -71,6 +72,7 @@ _ENRICH_RU_INSTRUCTIONS = """
 В вакансии недостаточно информации для публикации. Извлеки или выведи из текста:
 
 - post_enrichment.summary: 1–2 предложения на русском — кто нужен и зачем
+- post_enrichment.key_tasks: 3–5 основных задач, на русском языке
 - post_enrichment.key_requirements: 3–5 требований, на русском языке
 - post_enrichment.key_benefits: 2–4 пункта об условиях (зарплата, формат, бонусы)
 - post_enrichment.formatted_salary: строка вида "120 000–180 000 ₽" или null
@@ -113,6 +115,7 @@ _OUTPUT_WITH_ENRICH = """{
   "reason": "<1-2 sentences in Russian for the moderator>",
   "post_enrichment": {
     "summary": "<1-2 sentences in Russian>",
+    "key_tasks": ["<main responsibility>", "..."],
     "key_requirements": ["<requirement>", "..."],
     "key_benefits": ["<benefit in Russian>", "..."],
     "formatted_salary": "<string or null>",
@@ -123,6 +126,7 @@ _OUTPUT_WITH_ENRICH = """{
 _OUTPUT_ENRICH_ONLY = """{
   "post_enrichment": {
     "summary": "<1-2 предложения на русском>",
+    "key_tasks": ["<основная задача>", "..."],
     "key_requirements": ["<требование>", "..."],
     "key_benefits": ["<условие>", "..."],
     "formatted_salary": "<строка или null>",
@@ -172,6 +176,10 @@ def call_with_fallback(messages: list[dict], vacancy_id: int, label: str) -> dic
         base_url="https://openrouter.ai/api/v1",
         api_key=os.environ["OPENROUTER_API_KEY"],
     )
+    # DEBUG: log scorer input — remove before release
+    logger.debug("[SCORER INPUT] vacancy_id=%d label=%s prompt_chars=%d",
+                 vacancy_id, label, sum(len(m.get("content", "")) for m in messages))
+
     last_exc: Exception | None = None
     for model in sorted(MODELS, key=lambda m: m["priority"]):
         t0 = time.monotonic()
@@ -191,10 +199,21 @@ def call_with_fallback(messages: list[dict], vacancy_id: int, label: str) -> dic
                 "LLM: model=%s latency=%dms tokens=%d vacancy_id=%d mode=%s",
                 model["id"], latency_ms, total_tokens, vacancy_id, label,
             )
-            result = json.loads(response.choices[0].message.content)
-            result["model_used"] = model["id"]
-            result["latency_ms"] = latency_ms
-            return result
+            raw_content = response.choices[0].message.content
+            # DEBUG: log raw AI response — remove before release
+            logger.debug("[SCORER RAW RESPONSE] model=%s vacancy_id=%d content=%.500r",
+                         model["id"], vacancy_id, raw_content)
+
+            parsed = json.loads(raw_content)
+            if not isinstance(parsed, dict):
+                raise ValueError(f"LLM returned non-dict JSON: {type(parsed).__name__} (value={raw_content!r:.100})")
+
+            # DEBUG: log parsed keys — remove before release
+            logger.debug("[SCORER PARSED] vacancy_id=%d keys=%s", vacancy_id, list(parsed.keys()))
+
+            parsed["model_used"] = model["id"]
+            parsed["latency_ms"] = latency_ms
+            return parsed
         except Exception as exc:
             logger.warning(
                 "LLM fallback: model=%s error=%s vacancy_id=%d",

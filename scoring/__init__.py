@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import logging
+
 from .llm_scorer import PROMPT_VERSION, call_llm, call_llm_enrich_only
 from .models import PostEnrichment, ScoringInput, ScoringResult
 from .pre_filter import check_post_completeness, pre_filter
 from .tier_mapper import map_tier
 from .validator import validate_llm_output
+
+logger = logging.getLogger(__name__)
 
 _LOCAL_SOURCES = {"hh.ru"}
 _COMPLETENESS_THRESHOLD = 0.8
@@ -110,6 +114,10 @@ def score_vacancy(vacancy: dict) -> ScoringResult:
 
     raw = call_llm(_make_inp(vacancy, vacancy_id), enrich=enrich)
     validated = validate_llm_output(raw, full_text, enrichment_used=enrich)
+    # DEBUG: log normalized scoring result — remove before release
+    logger.debug("[SCORER NORMALIZED] vacancy_id=%d score=%s tier_inputs=(visa=%s reloc=%s remote=%s)",
+                 vacancy_id, validated.get("score"), validated.get("visa_sponsorship"),
+                 validated.get("relocation_support"), validated.get("remote_policy"))
     tier, action = map_tier(
         validated["score"],
         validated["visa_sponsorship"],
