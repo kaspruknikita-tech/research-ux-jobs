@@ -11,7 +11,7 @@ from .validator import validate_llm_output
 logger = logging.getLogger(__name__)
 
 _LOCAL_SOURCES = {"hh.ru"}
-_COMPLETENESS_THRESHOLD = 0.8
+_COMPLETENESS_THRESHOLD = 1.0
 
 
 def _make_inp(vacancy: dict, vacancy_id: int) -> ScoringInput:

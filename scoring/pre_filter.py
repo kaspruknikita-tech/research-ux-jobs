@@ -58,7 +58,7 @@ def check_post_completeness(vacancy: dict) -> float:
     if len(description) > 200:
         sections = _parse_sections(description)
         has_sections = any(k != "__intro__" and sections[k] for k in sections)
-        if has_sections or sections.get("__intro__"):
+        if has_sections:
             found += 1
 
     return found / 5
