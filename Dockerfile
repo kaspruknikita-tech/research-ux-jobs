@@ -10,6 +10,8 @@ COPY pyproject.toml poetry.lock ./
 
 RUN poetry install --only main --no-root --no-interaction --no-ansi
 
+RUN playwright install-deps chromium && playwright install chromium
+
 COPY . .
 
 CMD ["python", "bot_app.py"]

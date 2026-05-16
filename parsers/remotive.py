@@ -19,6 +19,9 @@ API_URL = "https://remotive.com/api/remote-jobs"
 TITLE_WHITELIST = [
     "researcher", "research", "ux", "cx",
     "insight", "insights", "usability",
+    "service designer", "voice of customer",
+    "ux strategist", "research ops",
+    "cx analyst", "customer experience",
 ]
 
 
@@ -53,7 +56,7 @@ class RemotiveParser(BaseParser):
                 "salary_max": None,
                 "currency": None,
                 "location": job.get("candidate_required_location", ""),
-                "work_format": "Remote",
+                "work_format": None,
                 "url": job.get("url", ""),
                 "description": job.get("description", ""),
             })

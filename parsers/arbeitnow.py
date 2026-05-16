@@ -15,7 +15,13 @@ logger = logging.getLogger(__name__)
 API_URL = "https://www.arbeitnow.com/api/job-board-api"
 MAX_PAGES = 15
 
-WHITELIST = ["researcher", "research", "ux", "cx", "insight", "usability"]
+WHITELIST = [
+    "researcher", "research", "ux", "cx",
+    "insight", "usability",
+    "service designer", "voice of customer",
+    "ux strategist", "research ops",
+    "cx analyst", "customer experience",
+]
 
 
 def _is_relevant(title: str) -> bool:
@@ -53,7 +59,7 @@ class ArbeitnowParser(BaseParser):
                     "salary_max": None,
                     "currency": None,
                     "location": job.get("location", ""),
-                    "work_format": "Remote" if job.get("remote") else None,
+                    "work_format": None,
                     "url": job.get("url", ""),
                     "description": job.get("description", ""),
                 })
