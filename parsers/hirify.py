@@ -1,12 +1,10 @@
 """
-Парсер hirify.me.
-Nuxt.js — перехватываем XHR к api.hirify.me, воспроизводим через requests.
-Fallback: DOM-скрапинг через Playwright.
+Парсер hirify.me (DOM-скрапинг через Playwright).
+API требует авторизации — используем публичный поиск по ?search=.
 """
 
 import logging
 
-import requests as req_lib
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 from parsers.base import BaseParser
@@ -14,13 +12,14 @@ from parsers.base import BaseParser
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://hirify.me"
-API_HOST = "api.hirify.me"
-MAX_PAGES = 20
 
-TITLE_WHITELIST = [
-    "researcher", "research", "ux", "cx", "usability",
-    "service designer", "voice of customer", "ux strategist",
-    "research ops", "cx analyst", "customer experience",
+SEARCH_QUERIES = [
+    "ux researcher",
+    "user researcher",
+    "cx researcher",
+    "service designer",
+    "usability researcher",
+    "research ops",
 ]
 
 _UA = (
@@ -29,161 +28,19 @@ _UA = (
 )
 
 
-def _is_relevant(title: str) -> bool:
-    t = title.lower()
-    return any(w in t for w in TITLE_WHITELIST)
-
-
-def _normalize_job(job: dict) -> dict:
-    title = job.get("title") or job.get("name") or job.get("position") or ""
-    url = job.get("url") or job.get("link") or ""
-    if url and not url.startswith("http"):
-        url = "https://hirify.me" + url
-    return {
-        "external_id": str(job.get("id") or job.get("slug") or ""),
-        "title": title,
-        "company": job.get("company") or job.get("company_name") or "",
-        "salary_min": None,
-        "salary_max": None,
-        "currency": None,
-        "location": job.get("location") or job.get("city") or "",
-        "work_format": None,
-        "url": url,
-        "description": job.get("description") or job.get("body") or "",
-    }
-
-
-def _intercept_and_capture(browser) -> tuple[str, dict] | None:
-    """Открывает hirify.me, перехватывает запрос к api.hirify.me."""
-    captured: dict = {}
-    ctx = browser.new_context(user_agent=_UA)
-    page = ctx.new_page()
-
-    def on_request(request):
-        if API_HOST in request.url and not captured.get("url"):
-            # берём первый подходящий запрос (список вакансий)
-            url = request.url
-            if any(k in url for k in ("vacanc", "job", "position", "listing")):
-                captured["url"] = url
-                captured["headers"] = dict(request.headers)
-                logger.info("[hirify] Перехвачен API: %s", url)
-
-    page.on("request", on_request)
-
+def _get_description(page, url: str) -> str:
     try:
-        page.goto(BASE_URL, wait_until="networkidle", timeout=30_000)
-    except PWTimeout:
-        logger.warning("[hirify] Таймаут при перехвате")
+        page.goto(url, wait_until="domcontentloaded", timeout=20_000)
+        page.wait_for_timeout(1500)
+        for sel in ("[class*='description']", "[class*='vacancy-body']", "[class*='content']", "main"):
+            el = page.query_selector(sel)
+            if el:
+                text = el.inner_text().strip()
+                if len(text) > 100:
+                    return text
     except Exception:
-        logger.exception("[hirify] Ошибка при перехвате")
-
-    page.close()
-    ctx.close()
-
-    if "url" in captured:
-        return captured["url"], captured["headers"]
-    return None
-
-
-def _fetch_via_api(api_url: str, headers: dict) -> list[dict]:
-    result = []
-    base = api_url.split("?")[0]
-
-    for page_num in range(1, MAX_PAGES + 1):
-        try:
-            resp = req_lib.get(base, params={"page": page_num}, headers=headers, timeout=15)
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception:
-            logger.exception("[hirify] API-запрос упал, страница %d", page_num)
-            break
-
-        jobs = []
-        if isinstance(data, list):
-            jobs = data
-        elif isinstance(data, dict):
-            for key in ("data", "jobs", "vacancies", "items", "results"):
-                if isinstance(data.get(key), list):
-                    jobs = data[key]
-                    break
-
-        if not jobs:
-            break
-
-        for job in jobs:
-            title = job.get("title") or job.get("name") or job.get("position") or ""
-            if not _is_relevant(title):
-                continue
-            result.append(_normalize_job(job))
-
-    return result
-
-
-def _scrape_dom(browser) -> list[dict]:
-    result = []
-    ctx = browser.new_context(user_agent=_UA)
-    page = ctx.new_page()
-
-    try:
-        page.goto(BASE_URL, wait_until="networkidle", timeout=30_000)
-    except PWTimeout:
-        logger.warning("[hirify] DOM: таймаут загрузки")
-    except Exception:
-        logger.exception("[hirify] DOM: ошибка загрузки")
-        page.close()
-        ctx.close()
-        return result
-
-    cards = page.query_selector_all(
-        "article, [class*='vacancy'], [class*='job-card'], [class*='job_card'], li[class*='job']"
-    )
-    logger.info("[hirify] DOM: найдено карточек %d", len(cards))
-
-    seen: set[str] = set()
-    for card in cards:
-        try:
-            title = ""
-            for sel in ("h2", "h3", "[class*='title']", "[class*='position']"):
-                el = card.query_selector(sel)
-                if el:
-                    title = el.inner_text().strip()
-                    break
-            if not title or not _is_relevant(title):
-                continue
-
-            link = card.query_selector("a")
-            url = link.get_attribute("href") if link else ""
-            if url and not url.startswith("http"):
-                url = "https://hirify.me" + url
-            if not url or url in seen:
-                continue
-            seen.add(url)
-
-            company = ""
-            for sel in ("[class*='company']", "[class*='employer']"):
-                el = card.query_selector(sel)
-                if el:
-                    company = el.inner_text().strip()
-                    break
-
-            result.append({
-                "external_id": "",
-                "title": title,
-                "company": company,
-                "salary_min": None,
-                "salary_max": None,
-                "currency": None,
-                "location": "",
-                "work_format": None,
-                "url": url,
-                "description": "",
-            })
-        except Exception:
-            logger.debug("[hirify] Ошибка разбора карточки", exc_info=True)
-
-    page.close()
-    ctx.close()
-    return result
+        logger.debug("[hirify] Не удалось загрузить detail: %s", url)
+    return ""
 
 
 class HirifyParser(BaseParser):
@@ -191,23 +48,70 @@ class HirifyParser(BaseParser):
     channel = "global"
 
     def fetch(self) -> list[dict]:
+        result = []
+        seen: set[str] = set()
+
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=True)
+            ctx = browser.new_context(user_agent=_UA)
+            list_page = ctx.new_page()
+            detail_page = ctx.new_page()
 
-            api_result = _intercept_and_capture(browser)
-            if api_result:
-                api_url, headers = api_result
-                jobs = _fetch_via_api(api_url, headers)
-                if jobs:
-                    logger.info("[hirify] API-режим: %d вакансий", len(jobs))
-                    browser.close()
-                    return jobs
-                logger.warning("[hirify] API найден, но данных нет — DOM fallback")
-            else:
-                logger.warning("[hirify] API не перехвачен — DOM fallback")
+            for query in SEARCH_QUERIES:
+                search_url = f"{BASE_URL}/?search={query.replace(' ', '+')}"
+                logger.info("[hirify] Поиск: %s", query)
 
-            jobs = _scrape_dom(browser)
+                try:
+                    list_page.goto(search_url, wait_until="domcontentloaded", timeout=20_000)
+                    list_page.wait_for_timeout(2000)
+                except PWTimeout:
+                    logger.warning("[hirify] Таймаут: %s", query)
+                    continue
+                except Exception:
+                    logger.exception("[hirify] Ошибка загрузки: %s", query)
+                    continue
+
+                links = list_page.query_selector_all("a.vacancy-card-link")
+                logger.info("[hirify] Найдено карточек: %d", len(links))
+
+                for link in links:
+                    try:
+                        href = link.get_attribute("href") or ""
+                        if not href or href in seen:
+                            continue
+                        seen.add(href)
+
+                        title_el = link.query_selector("h3.title")
+                        title = title_el.inner_text().strip() if title_el else ""
+                        if not title:
+                            continue
+
+                        company_el = link.query_selector(".company")
+                        company_text = company_el.inner_text().strip() if company_el else ""
+                        company = "" if "hidden" in company_text.lower() else company_text
+
+                        url = BASE_URL + href
+                        desc = _get_description(detail_page, url)
+
+                        slug = href.split("/")[-1]
+                        external_id = slug.split("-")[0] if slug else ""
+
+                        result.append({
+                            "external_id": external_id,
+                            "title": title,
+                            "company": company,
+                            "salary_min": None,
+                            "salary_max": None,
+                            "currency": None,
+                            "location": "",
+                            "work_format": None,
+                            "url": url,
+                            "description": desc,
+                        })
+                    except Exception:
+                        logger.debug("[hirify] Ошибка разбора карточки", exc_info=True)
+
             browser.close()
 
-        logger.info("[hirify] DOM-режим: %d вакансий", len(jobs))
-        return jobs
+        logger.info("[hirify] Итого: %d вакансий", len(result))
+        return result
