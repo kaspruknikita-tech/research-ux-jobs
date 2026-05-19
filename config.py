@@ -19,7 +19,11 @@ load_dotenv(BASE_DIR / ".env")
 TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHANNEL_RU: str = os.getenv("TELEGRAM_CHANNEL_RU", "")
 TELEGRAM_CHANNEL_GLOBAL: str = os.getenv("TELEGRAM_CHANNEL_GLOBAL", "")
+# Два чата модерации: отдельно для RU и Global вакансий.
+# Если TELEGRAM_MODERATION_CHAT_RU/GLOBAL не заданы — фолбэк на TELEGRAM_MODERATION_CHAT.
 TELEGRAM_MODERATION_CHAT: str = os.getenv("TELEGRAM_MODERATION_CHAT", "")
+TELEGRAM_MODERATION_CHAT_RU: str = os.getenv("TELEGRAM_MODERATION_CHAT_RU", "") or os.getenv("TELEGRAM_MODERATION_CHAT", "")
+TELEGRAM_MODERATION_CHAT_GLOBAL: str = os.getenv("TELEGRAM_MODERATION_CHAT_GLOBAL", "") or os.getenv("TELEGRAM_MODERATION_CHAT", "")
 TELEGRAM_ALERT_CHAT: str = os.getenv("TELEGRAM_ALERT_CHAT", "")
 
 # --- hh.ru ---
@@ -59,9 +63,6 @@ def validate() -> list[str]:
     if not GOOGLE_SHEET_ID:
         errors.append("GOOGLE_SHEET_ID не задан в .env")
     return errors
-
-# --- Hirify ---
-HIRIFY_AUTH_TOKEN: str = os.getenv("HIRIFY_AUTH_TOKEN", "")
 
 # --- Google Sheets ---
 GOOGLE_CREDENTIALS_FILE: str = str(BASE_DIR / "google_credentials.json")

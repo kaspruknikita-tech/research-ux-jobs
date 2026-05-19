@@ -167,9 +167,10 @@ def send_to_moderation(vacancy: dict, scoring_result: ScoringResult | None = Non
         if scoring_result is not None:
             text += _scoring_footer(scoring_result)
 
+        mod_chat = _get_moderation_chat(vacancy.get("channel", ""))
         _api(
             "sendMessage",
-            chat_id=config.TELEGRAM_MODERATION_CHAT,
+            chat_id=mod_chat,
             text=text,
             parse_mode="HTML",
             reply_markup=_keyboard(vacancy["id"], vacancy["channel"]),
@@ -180,6 +181,12 @@ def send_to_moderation(vacancy: dict, scoring_result: ScoringResult | None = Non
     except Exception:
         logger.exception("Не удалось отправить вакансию %s на модерацию", vacancy.get("id"))
         return False
+
+
+def _get_moderation_chat(channel: str) -> str:
+    if channel == "ru":
+        return config.TELEGRAM_MODERATION_CHAT_RU
+    return config.TELEGRAM_MODERATION_CHAT_GLOBAL
 
 
 _CHANNEL_MAP = {
@@ -222,7 +229,7 @@ def publish_due_scheduled() -> int:
 
 def send_new_vacancies_to_moderation() -> int:
     """Берёт все 'new' вакансии из БД и отправляет в чат модерации."""
-    if not config.TELEGRAM_BOT_TOKEN or not config.TELEGRAM_MODERATION_CHAT:
+    if not config.TELEGRAM_BOT_TOKEN or not (config.TELEGRAM_MODERATION_CHAT_RU or config.TELEGRAM_MODERATION_CHAT_GLOBAL):
         logger.warning("Telegram не настроен, пропускаем отправку на модерацию")
         return 0
 

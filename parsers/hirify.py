@@ -7,7 +7,6 @@ import logging
 
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
-import config
 from parsers.base import BaseParser
 
 logger = logging.getLogger(__name__)
@@ -54,12 +53,7 @@ class HirifyParser(BaseParser):
 
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=True)
-            ctx_kwargs: dict = {"user_agent": _UA}
-            if config.HIRIFY_AUTH_TOKEN:
-                ctx_kwargs["extra_http_headers"] = {
-                    "Authorization": f"Bearer {config.HIRIFY_AUTH_TOKEN}",
-                }
-            ctx = browser.new_context(**ctx_kwargs)
+            ctx = browser.new_context(user_agent=_UA)
             list_page = ctx.new_page()
             detail_page = ctx.new_page()
 
