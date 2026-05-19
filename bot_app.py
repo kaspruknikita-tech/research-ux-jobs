@@ -17,13 +17,13 @@ from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from telegram.error import Conflict
-from telegram.ext import Application, CallbackQueryHandler
+from telegram.ext import Application, CallbackQueryHandler, MessageHandler, filters
 
 import config
 import database
 from bot.alerts import send_alert
-from bot.handlers import handle_moderation
-from bot.moderator import send_new_vacancies_to_moderation
+from bot.handlers import handle_edit_reply, handle_moderation
+from bot.moderator import publish_due_scheduled, send_new_vacancies_to_moderation
 from scheduler import run_cycle
 
 logging.basicConfig(
@@ -51,6 +51,16 @@ def full_cycle() -> None:
         send_alert(f"Ошибка цикла: {type(e).__name__}: {e}")
 
 
+def scheduled_publish_cycle() -> None:
+    """Публикует вакансии у которых наступило scheduled_at."""
+    try:
+        published = publish_due_scheduled()
+        if published:
+            logger.info("Опубликовано запланированных вакансий: %d", published)
+    except Exception:
+        logger.exception("Ошибка публикации запланированных вакансий")
+
+
 def main() -> None:
     database.init_db()
 
@@ -74,6 +84,13 @@ def main() -> None:
         id="main_cycle",
         max_instances=1,
     )
+    scheduler.add_job(
+        scheduled_publish_cycle,
+        "interval",
+        minutes=5,
+        id="scheduled_publish",
+        max_instances=1,
+    )
     scheduler.start()
     logger.info("Планировщик запущен: каждые 2 часа с 10:00 до 21:00 МСК")
 
@@ -88,8 +105,17 @@ def main() -> None:
     app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
     app.add_error_handler(on_error)
     app.add_handler(CallbackQueryHandler(handle_moderation))
+    mod_chat = config.TELEGRAM_MODERATION_CHAT
+    mod_filter = (
+        filters.Chat(int(mod_chat)) if mod_chat.lstrip("-").isdigit()
+        else filters.Chat(username=mod_chat.lstrip("@"))
+    )
+    app.add_handler(MessageHandler(
+        filters.TEXT & filters.REPLY & mod_filter,
+        handle_edit_reply,
+    ))
     logger.info("Бот запущен, слушаем кнопки модерации...")
-    app.run_polling(allowed_updates=["callback_query"], drop_pending_updates=True)
+    app.run_polling(allowed_updates=["callback_query", "message"], drop_pending_updates=True)
 
 
 if __name__ == "__main__":

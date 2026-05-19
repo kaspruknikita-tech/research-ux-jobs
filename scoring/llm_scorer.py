@@ -57,11 +57,12 @@ _ENRICH_INSTRUCTIONS = """
 ## STEP 3: ENRICH (fill missing post fields)
 
 The job post is missing some fields needed to publish it. Extract or infer them from the text.
+Use the same language as the job posting for all fields (English for English jobs).
 
-- post_enrichment.summary: 1–2 sentences in Russian — who they're looking for and why
-- post_enrichment.key_tasks: 3–5 bullet points in the original language — main responsibilities/duties
-- post_enrichment.key_requirements: 3–5 bullet points in the original language of the posting
-- post_enrichment.key_benefits: 2–4 bullet points in Russian (remote/visa/salary/relocation)
+- post_enrichment.summary: 1–2 sentences — who they're looking for and why
+- post_enrichment.key_tasks: 3–5 bullet points — main responsibilities/duties
+- post_enrichment.key_requirements: 3–5 bullet points — required skills/qualifications
+- post_enrichment.key_benefits: 2–4 bullet points — remote/visa/salary/relocation perks
 - post_enrichment.formatted_salary: formatted string like "$90k–$130k" or null if not mentioned
 - post_enrichment.seniority_label: "Junior", "Mid-level", "Senior", "Lead", or "Not specified"
 """
@@ -114,7 +115,7 @@ _OUTPUT_WITH_ENRICH = """{
   "score_breakdown": {"<signal_name>": <integer>},
   "reason": "<1-2 sentences in Russian for the moderator>",
   "post_enrichment": {
-    "summary": "<1-2 sentences in Russian>",
+    "summary": "<1-2 sentences in posting language>",
     "key_tasks": ["<main responsibility>", "..."],
     "key_requirements": ["<requirement>", "..."],
     "key_benefits": ["<benefit in Russian>", "..."],

@@ -77,12 +77,36 @@ def _scoring_footer(result: ScoringResult) -> str:
     return "\n\n" + "\n".join(lines)
 
 
+_SCHEDULE_SLOTS = [
+    ("🕐 +30м", 30),
+    ("🕑 +1ч",  60),
+    ("🕒 +3ч",  180),
+    ("🕓 +6ч",  360),
+    ("🕔 +12ч", 720),
+    ("🕕 +18ч", 1080),
+    ("🕖 +24ч", 1440),
+]
+
+
 def _keyboard(vacancy_id: int, channel: str) -> dict:
+    sched_row1 = [
+        {"text": label, "callback_data": f"schedule:{vacancy_id}:{mins}"}
+        for label, mins in _SCHEDULE_SLOTS[:4]
+    ]
+    sched_row2 = [
+        {"text": label, "callback_data": f"schedule:{vacancy_id}:{mins}"}
+        for label, mins in _SCHEDULE_SLOTS[4:]
+    ]
     return {
-        "inline_keyboard": [[
-            {"text": "✅ Опубликовать", "callback_data": f"approve:{vacancy_id}:{channel}"},
-            {"text": "❌ Отклонить",    "callback_data": f"reject:{vacancy_id}"},
-        ]]
+        "inline_keyboard": [
+            [
+                {"text": "✅ Опубликовать", "callback_data": f"approve:{vacancy_id}:{channel}"},
+                {"text": "❌ Отклонить",    "callback_data": f"reject:{vacancy_id}"},
+                {"text": "✏️ Описание",     "callback_data": f"edit:{vacancy_id}"},
+            ],
+            sched_row1,
+            sched_row2,
+        ]
     }
 
 
@@ -156,6 +180,44 @@ def send_to_moderation(vacancy: dict, scoring_result: ScoringResult | None = Non
     except Exception:
         logger.exception("Не удалось отправить вакансию %s на модерацию", vacancy.get("id"))
         return False
+
+
+_CHANNEL_MAP = {
+    "ru":     lambda: config.TELEGRAM_CHANNEL_RU,
+    "global": lambda: config.TELEGRAM_CHANNEL_GLOBAL,
+}
+
+
+def publish_due_scheduled() -> int:
+    """Публикует все вакансии у которых scheduled_at уже наступил."""
+    due = database.get_due_scheduled()
+    if not due:
+        return 0
+
+    published = 0
+    for v in due:
+        channel_id = _CHANNEL_MAP.get(v.get("channel", ""), lambda: config.TELEGRAM_CHANNEL_GLOBAL)()
+        if not channel_id:
+            logger.warning("Нет channel_id для вакансии id=%s", v["id"])
+            continue
+        try:
+            scoring_result = _get_or_score(v)
+            text = _format(v, scoring_result)
+            _api(
+                "sendMessage",
+                chat_id=channel_id,
+                text=text,
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
+            database.mark_posted(v["id"])
+            published += 1
+            logger.info("Опубликована запланированная вакансия id=%s", v["id"])
+        except Exception:
+            logger.exception("Ошибка публикации запланированной вакансии id=%s", v["id"])
+        time.sleep(_SEND_DELAY)
+
+    return published
 
 
 def send_new_vacancies_to_moderation() -> int:

@@ -53,8 +53,13 @@ def init_db() -> None:
                     status          TEXT NOT NULL DEFAULT 'new',
                     channel         TEXT NOT NULL,
                     parsed_at       TEXT NOT NULL,
-                    posted_at       TEXT
+                    posted_at       TEXT,
+                    scheduled_at    TIMESTAMP WITH TIME ZONE
                 )
+            """)
+            cur.execute("""
+                ALTER TABLE vacancies
+                ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMP WITH TIME ZONE
             """)
         conn.commit()
         logger.info("База данных инициализирована (PostgreSQL)")
@@ -333,6 +338,51 @@ def get_latest_vacancy_score(vacancy_id: int) -> dict | None:
             )
             row = cur.fetchone()
             return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_vacancy_description(vacancy_id: int, description: str) -> None:
+    """Обновляет описание вакансии."""
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE vacancies SET description = %s WHERE id = %s",
+                (description, vacancy_id),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def mark_scheduled(vacancy_id: int, publish_at: datetime) -> None:
+    """Планирует публикацию вакансии на указанное время."""
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE vacancies SET status = 'scheduled', scheduled_at = %s WHERE id = %s",
+                (publish_at, vacancy_id),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_due_scheduled() -> list[dict]:
+    """Возвращает запланированные вакансии, у которых scheduled_at <= now."""
+    conn = _get_connection()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT * FROM vacancies
+                WHERE status = 'scheduled' AND scheduled_at <= NOW()
+                ORDER BY scheduled_at
+                """,
+            )
+            return [dict(row) for row in cur.fetchall()]
     finally:
         conn.close()
 

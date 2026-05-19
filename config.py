@@ -60,6 +60,9 @@ def validate() -> list[str]:
         errors.append("GOOGLE_SHEET_ID не задан в .env")
     return errors
 
+# --- Hirify ---
+HIRIFY_AUTH_TOKEN: str = os.getenv("HIRIFY_AUTH_TOKEN", "")
+
 # --- Google Sheets ---
 GOOGLE_CREDENTIALS_FILE: str = str(BASE_DIR / "google_credentials.json")
 GOOGLE_SHEET_ID: str = os.getenv("GOOGLE_SHEET_ID", "")

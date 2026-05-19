@@ -1,14 +1,15 @@
 """
 Обработчики Telegram-бота.
-handle_moderation — реагирует на нажатия кнопок ✅/❌ в чате модерации.
+handle_moderation — реагирует на нажатия кнопок в чате модерации.
+handle_edit_reply — обрабатывает текстовый ответ с новым описанием вакансии.
 """
 
 import logging
+from datetime import datetime, timedelta, timezone
 
-from telegram import Update
+from telegram import ForceReply, Update
 from telegram.constants import ParseMode
-from telegram.error import BadRequest
-from telegram.ext import ContextTypes
+from telegram.ext import ContextTypes, filters
 
 import config
 import database
@@ -16,6 +17,8 @@ from bot.alerts import send_alert
 from bot.templates import format_ru, format_global
 
 logger = logging.getLogger(__name__)
+
+_EDIT_PROMPT_PREFIX = "✏️ Вакансия #"
 
 
 def _get_channel_id(channel: str) -> str:
@@ -27,19 +30,14 @@ def _format(vacancy: dict) -> str:
 
 
 async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Обрабатывает нажатие кнопки Опубликовать / Отклонить."""
+    """Обрабатывает нажатия кнопок модерации."""
     query = update.callback_query
+    # answer() имеет 10-минутный TTL — молча игнорируем если устарел,
+    # само действие выполняем в любом случае
     try:
         await query.answer()
-    except BadRequest:
-        # Telegram аннулирует callback_query через 60 сек после отправки сообщения.
-        # Это происходит после каждого передеплоя: кнопки на старых постах
-        # выглядят активными, но уже не работают. Следующий цикл пришлёт новые.
-        await query.answer(
-            "Кнопка устарела — дождитесь следующего цикла (30 мин)",
-            show_alert=True,
-        )
-        return
+    except Exception:
+        pass
 
     parts = query.data.split(":")
     action = parts[0]
@@ -61,7 +59,6 @@ async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 disable_web_page_preview=True,
             )
             database.mark_posted(vacancy_id)
-            # Убираем кнопки и добавляем статус отдельным сообщением
             await query.edit_message_reply_markup(reply_markup=None)
             await query.message.reply_text(f"✅ Опубликовано — {actor}")
             logger.info("Опубликована вакансия id=%s (%s)", vacancy_id, actor)
@@ -75,3 +72,47 @@ async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await query.edit_message_reply_markup(reply_markup=None)
         await query.message.reply_text(f"❌ Отклонено — {actor}")
         logger.info("Отклонена вакансия id=%s (%s)", vacancy_id, actor)
+
+    elif action == "edit":
+        await query.message.reply_text(
+            f"{_EDIT_PROMPT_PREFIX}{vacancy_id} — пришли новое описание:",
+            reply_markup=ForceReply(selective=True),
+        )
+
+    elif action == "schedule":
+        minutes = int(parts[2])
+        publish_at = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+        database.mark_scheduled(vacancy_id, publish_at)
+        await query.edit_message_reply_markup(reply_markup=None)
+        msk = publish_at + timedelta(hours=3)
+        await query.message.reply_text(
+            f"⏰ Запланировано на {msk.strftime('%d.%m %H:%M')} МСК — {actor}"
+        )
+        logger.info("Запланирована вакансия id=%s на %s (%s)", vacancy_id, publish_at, actor)
+
+
+async def handle_edit_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обрабатывает ответ на запрос редактирования описания."""
+    msg = update.message
+    if not msg or not msg.reply_to_message:
+        return
+
+    prompt_text = msg.reply_to_message.text or ""
+    if not prompt_text.startswith(_EDIT_PROMPT_PREFIX):
+        return
+
+    try:
+        # Извлекаем vacancy_id из текста "✏️ Вакансия #123 — пришли новое описание:"
+        id_part = prompt_text[len(_EDIT_PROMPT_PREFIX):].split(" ")[0]
+        vacancy_id = int(id_part)
+    except (ValueError, IndexError):
+        return
+
+    new_description = msg.text or ""
+    if len(new_description) < 10:
+        await msg.reply_text("Слишком короткое описание, попробуй ещё раз.")
+        return
+
+    database.update_vacancy_description(vacancy_id, new_description)
+    await msg.reply_text(f"✅ Описание вакансии #{vacancy_id} обновлено.")
+    logger.info("Обновлено описание вакансии id=%s", vacancy_id)
