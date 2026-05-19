@@ -164,10 +164,11 @@ _LANG_RU = (
 
 
 def _make_system_prompt(enrich: bool, is_ru: bool = False) -> str:
-    steps = _BASE_SYSTEM_PROMPT + "\n" + _SCORING_INSTRUCTIONS
+    lang_rule = (_LANG_RU if is_ru else _LANG_EN) if enrich else ""
+    # Языковая директива идёт ПЕРВОЙ — мелкие модели не дочитывают до конца
+    steps = lang_rule + "\n\n" + _BASE_SYSTEM_PROMPT + "\n" + _SCORING_INSTRUCTIONS
     if enrich:
         steps += "\n" + _ENRICH_INSTRUCTIONS
-        steps += _LANG_RU if is_ru else _LANG_EN
     steps += "\n\n## OUTPUT FORMAT\n\n"
     steps += _OUTPUT_WITH_ENRICH if enrich else _OUTPUT_SCORE_ONLY
     return steps

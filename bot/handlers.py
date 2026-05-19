@@ -141,19 +141,25 @@ async def handle_edit_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     vacancy = database.get_vacancy_by_id(vacancy_id)
     mod_msg_id = (vacancy or {}).get("moderation_message_id")
     if vacancy and mod_msg_id:
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         from bot.moderator import _format, _get_moderation_chat, _get_or_score, _keyboard, _scoring_footer
         scoring_result = _get_or_score(vacancy)
         new_text = _format(vacancy, scoring_result)
         if scoring_result:
             new_text += _scoring_footer(scoring_result)
         mod_chat = _get_moderation_chat(vacancy.get("channel", ""))
+        kbd_dict = _keyboard(vacancy_id, vacancy["channel"])
+        markup = InlineKeyboardMarkup([
+            [InlineKeyboardButton(btn["text"], callback_data=btn["callback_data"]) for btn in row]
+            for row in kbd_dict["inline_keyboard"]
+        ])
         try:
             await context.bot.edit_message_text(
                 chat_id=mod_chat,
                 message_id=mod_msg_id,
                 text=new_text,
                 parse_mode=ParseMode.HTML,
-                reply_markup=_keyboard(vacancy_id, vacancy["channel"]),
+                reply_markup=markup,
                 disable_web_page_preview=True,
             )
         except Exception:
