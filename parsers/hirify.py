@@ -92,7 +92,7 @@ class HirifyParser(BaseParser):
                         if not title:
                             continue
 
-                        company_el = link.query_selector(".company")
+                        company_el = link.query_selector(".company-name")
                         company_text = company_el.inner_text().strip() if company_el else ""
                         company = "" if "hidden" in company_text.lower() else company_text
 
