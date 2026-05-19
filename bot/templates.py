@@ -4,7 +4,19 @@
 """
 
 import html
+from urllib.parse import urlparse
+
 from bs4 import BeautifulSoup
+
+
+def _safe_url(url: str) -> str:
+    try:
+        scheme = urlparse(url).scheme
+        if scheme not in ("http", "https"):
+            return "#"
+    except Exception:
+        return "#"
+    return html.escape(url, quote=True)
 
 
 def _normalize(text: str) -> str:
@@ -192,7 +204,7 @@ def _build_post(vacancy: dict, apply_label: str, is_ru: bool, enrichment: dict |
     title = html.escape(vacancy.get("title") or "")
     company = html.escape(vacancy.get("company") or "")
     location = html.escape(vacancy.get("location") or "")
-    work_format = vacancy.get("work_format") or ""
+    work_format = html.escape(vacancy.get("work_format") or "")
 
     header = f"<b>{title}</b>"
     if company:
@@ -303,7 +315,7 @@ def _build_post(vacancy: dict, apply_label: str, is_ru: bool, enrichment: dict |
             lines += ["", f"<b>{cond_label}</b>",
                       html.escape(_fmt_conditions(enrichment["key_benefits"]))]
 
-    lines += ["", f'🔗 <a href="{vacancy["url"]}">{apply_label}</a>']
+    lines += ["", f'🔗 <a href="{_safe_url(vacancy["url"])}">{apply_label}</a>']
 
     return "\n".join(lines)
 

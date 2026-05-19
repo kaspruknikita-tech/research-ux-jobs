@@ -32,17 +32,34 @@ def _format(vacancy: dict) -> str:
 async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обрабатывает нажатия кнопок модерации."""
     query = update.callback_query
-    # answer() имеет 10-минутный TTL — молча игнорируем если устарел,
-    # само действие выполняем в любом случае
+
+    # Только из авторизованных чатов модерации
+    allowed_chats = {config.TELEGRAM_MODERATION_CHAT_RU, config.TELEGRAM_MODERATION_CHAT_GLOBAL}
+    if str(query.message.chat_id) not in allowed_chats:
+        try:
+            await query.answer("Unauthorized", show_alert=True)
+        except Exception:
+            pass
+        return
+
+    # answer() имеет 10-минутный TTL — молча игнорируем если устарел
     try:
         await query.answer()
     except Exception:
         pass
 
     parts = query.data.split(":")
+    if len(parts) < 2:
+        return
     action = parts[0]
-    vacancy_id = int(parts[1])
-    actor = query.from_user.first_name or "модератор"
+    try:
+        vacancy_id = int(parts[1])
+        if not (0 < vacancy_id < 2**31):
+            return
+    except (ValueError, IndexError):
+        return
+
+    actor = (query.from_user.first_name or "модератор").replace("\n", " ").replace("\r", " ")
 
     vacancy = database.get_vacancy_by_id(vacancy_id)
     if not vacancy:
@@ -80,7 +97,12 @@ async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         )
 
     elif action == "schedule":
-        minutes = int(parts[2])
+        try:
+            minutes = int(parts[2])
+            if minutes not in {30, 60, 180, 360, 720, 1080, 1440}:
+                return
+        except (ValueError, IndexError):
+            return
         publish_at = datetime.now(timezone.utc) + timedelta(minutes=minutes)
         database.mark_scheduled(vacancy_id, publish_at)
         await query.edit_message_reply_markup(reply_markup=None)
