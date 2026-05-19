@@ -25,6 +25,7 @@ def _make_inp(vacancy: dict, vacancy_id: int) -> ScoringInput:
         salary_min=vacancy.get("salary_min"),
         salary_max=vacancy.get("salary_max"),
         currency=vacancy.get("currency"),
+        is_ru=vacancy.get("channel") == "ru",
     )
 
 

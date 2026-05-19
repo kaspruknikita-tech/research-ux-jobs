@@ -15,6 +15,7 @@ class ScoringInput(BaseModel):
     salary_min: int | None = None
     salary_max: int | None = None
     currency: str | None = None
+    is_ru: bool = False
 
 
 class PostEnrichment(BaseModel):

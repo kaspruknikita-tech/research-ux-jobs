@@ -151,10 +151,23 @@ _BASE_RU_SYSTEM_PROMPT = """Ты помощник по досборке пост
 Отвечай строго JSON, без markdown и лишнего текста."""
 
 
-def _make_system_prompt(enrich: bool) -> str:
+_LANG_EN = (
+    "\n\nLANGUAGE RULE: The job posting is in English. "
+    "ALL text in post_enrichment fields (summary, key_tasks, key_requirements, key_benefits) "
+    "MUST be written in English only. Do NOT use Russian or any other language."
+)
+_LANG_RU = (
+    "\n\nПРАВИЛО ЯЗЫКА: Вакансия на русском языке. "
+    "ВСЕ поля post_enrichment (summary, key_tasks, key_requirements, key_benefits) "
+    "ДОЛЖНЫ быть написаны только на русском языке."
+)
+
+
+def _make_system_prompt(enrich: bool, is_ru: bool = False) -> str:
     steps = _BASE_SYSTEM_PROMPT + "\n" + _SCORING_INSTRUCTIONS
     if enrich:
         steps += "\n" + _ENRICH_INSTRUCTIONS
+        steps += _LANG_RU if is_ru else _LANG_EN
     steps += "\n\n## OUTPUT FORMAT\n\n"
     steps += _OUTPUT_WITH_ENRICH if enrich else _OUTPUT_SCORE_ONLY
     return steps
@@ -228,7 +241,7 @@ def call_with_fallback(messages: list[dict], vacancy_id: int, label: str) -> dic
 def call_llm(inp: ScoringInput, enrich: bool = False) -> dict:
     label = "score+enrich" if enrich else "score"
     messages = [
-        {"role": "system", "content": _make_system_prompt(enrich)},
+        {"role": "system", "content": _make_system_prompt(enrich, is_ru=inp.is_ru)},
         {"role": "user", "content": _build_user_message(inp)},
     ]
     return call_with_fallback(messages, inp.vacancy_id, label)
