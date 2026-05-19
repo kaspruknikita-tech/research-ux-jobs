@@ -4,7 +4,13 @@
 """
 
 import html
+import re
 from urllib.parse import urlparse
+
+_LLM_LABEL_RE = re.compile(
+    r"^\s*(tl;?dr|summary|overview|about the role|о роли|резюме)\s*[:\-–]?\s*\n*",
+    re.IGNORECASE,
+)
 
 from bs4 import BeautifulSoup
 
@@ -233,7 +239,7 @@ def _build_post(vacancy: dict, apply_label: str, is_ru: bool, enrichment: dict |
             summary = enrichment["summary"]
             if "<" in summary:
                 summary = BeautifulSoup(summary, "html.parser").get_text(strip=True)
-            intro = summary
+            intro = _LLM_LABEL_RE.sub("", summary).strip()
         if intro:
             lines += ["", f"<b>{'О роли' if is_ru else 'About the role'}</b>", html.escape(_clean(intro))]
 
@@ -305,7 +311,8 @@ def _build_post(vacancy: dict, apply_label: str, is_ru: bool, enrichment: dict |
         lines += ["", html.escape(snippet)]
     elif enrichment and enrichment.get("summary"):
         label = "О роли" if is_ru else "About the role"
-        lines += ["", f"<b>{label}</b>", html.escape(enrichment["summary"])]
+        clean_summary = _LLM_LABEL_RE.sub("", enrichment["summary"]).strip()
+        lines += ["", f"<b>{label}</b>", html.escape(clean_summary)]
         if enrichment.get("key_requirements"):
             reqs_label = "Требования" if is_ru else "Requirements"
             lines += ["", f"<b>{reqs_label}</b>",
