@@ -114,5 +114,28 @@ async def handle_edit_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return
 
     database.update_vacancy_description(vacancy_id, new_description)
+
+    # Перерисовываем оригинальное сообщение в чате модерации
+    vacancy = database.get_vacancy_by_id(vacancy_id)
+    mod_msg_id = (vacancy or {}).get("moderation_message_id")
+    if vacancy and mod_msg_id:
+        from bot.moderator import _format, _get_moderation_chat, _get_or_score, _keyboard, _scoring_footer
+        scoring_result = _get_or_score(vacancy)
+        new_text = _format(vacancy, scoring_result)
+        if scoring_result:
+            new_text += _scoring_footer(scoring_result)
+        mod_chat = _get_moderation_chat(vacancy.get("channel", ""))
+        try:
+            await context.bot.edit_message_text(
+                chat_id=mod_chat,
+                message_id=mod_msg_id,
+                text=new_text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=_keyboard(vacancy_id, vacancy["channel"]),
+                disable_web_page_preview=True,
+            )
+        except Exception:
+            logger.warning("Не удалось обновить сообщение модерации для вакансии id=%s", vacancy_id)
+
     await msg.reply_text(f"✅ Описание вакансии #{vacancy_id} обновлено.")
     logger.info("Обновлено описание вакансии id=%s", vacancy_id)

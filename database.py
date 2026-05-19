@@ -61,6 +61,10 @@ def init_db() -> None:
                 ALTER TABLE vacancies
                 ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMP WITH TIME ZONE
             """)
+            cur.execute("""
+                ALTER TABLE vacancies
+                ADD COLUMN IF NOT EXISTS moderation_message_id INTEGER
+            """)
         conn.commit()
         logger.info("База данных инициализирована (PostgreSQL)")
     finally:
@@ -338,6 +342,19 @@ def get_latest_vacancy_score(vacancy_id: int) -> dict | None:
             )
             row = cur.fetchone()
             return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def save_moderation_message_id(vacancy_id: int, message_id: int) -> None:
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE vacancies SET moderation_message_id = %s WHERE id = %s",
+                (message_id, vacancy_id),
+            )
+        conn.commit()
     finally:
         conn.close()
 

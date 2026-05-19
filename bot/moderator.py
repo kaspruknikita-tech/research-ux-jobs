@@ -168,7 +168,7 @@ def send_to_moderation(vacancy: dict, scoring_result: ScoringResult | None = Non
             text += _scoring_footer(scoring_result)
 
         mod_chat = _get_moderation_chat(vacancy.get("channel", ""))
-        _api(
+        resp = _api(
             "sendMessage",
             chat_id=mod_chat,
             text=text,
@@ -177,6 +177,9 @@ def send_to_moderation(vacancy: dict, scoring_result: ScoringResult | None = Non
             disable_web_page_preview=True,
         )
         database.mark_pending(vacancy["id"])
+        msg_id = (resp.get("result") or {}).get("message_id")
+        if msg_id:
+            database.save_moderation_message_id(vacancy["id"], msg_id)
         return True
     except Exception:
         logger.exception("Не удалось отправить вакансию %s на модерацию", vacancy.get("id"))
