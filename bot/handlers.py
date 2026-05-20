@@ -140,6 +140,8 @@ async def handle_edit_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     # Перерисовываем оригинальное сообщение в чате модерации
     vacancy = database.get_vacancy_by_id(vacancy_id)
     mod_msg_id = (vacancy or {}).get("moderation_message_id")
+    if not mod_msg_id:
+        logger.warning("moderation_message_id отсутствует для вакансии id=%s, перерисовка невозможна", vacancy_id)
     if vacancy and mod_msg_id:
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         from bot.moderator import _format, _get_moderation_chat, _get_or_score, _keyboard, _scoring_footer
@@ -163,7 +165,7 @@ async def handle_edit_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 disable_web_page_preview=True,
             )
         except Exception:
-            logger.warning("Не удалось обновить сообщение модерации для вакансии id=%s", vacancy_id)
+            logger.warning("Не удалось обновить сообщение модерации для вакансии id=%s", vacancy_id, exc_info=True)
 
     await msg.reply_text(f"✅ Описание вакансии #{vacancy_id} обновлено.")
     logger.info("Обновлено описание вакансии id=%s", vacancy_id)
