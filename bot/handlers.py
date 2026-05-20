@@ -155,6 +155,7 @@ async def handle_edit_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             [InlineKeyboardButton(btn["text"], callback_data=btn["callback_data"]) for btn in row]
             for row in kbd_dict["inline_keyboard"]
         ])
+        logger.info("edit_message_text: chat=%s msg_id=%s text_len=%s", mod_chat, mod_msg_id, len(new_text))
         try:
             await context.bot.edit_message_text(
                 chat_id=mod_chat,
@@ -164,6 +165,7 @@ async def handle_edit_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 reply_markup=markup,
                 disable_web_page_preview=True,
             )
+            logger.info("edit_message_text OK для вакансии id=%s", vacancy_id)
         except Exception:
             logger.warning("Не удалось обновить сообщение модерации для вакансии id=%s", vacancy_id, exc_info=True)
 
