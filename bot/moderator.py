@@ -148,12 +148,12 @@ def _get_or_score(vacancy: dict) -> ScoringResult | None:
             return _row_to_scoring_result(row, vacancy["id"])
         result = score_vacancy(vacancy)
     except Exception:
-        logger.warning("Скоринг не удался для вакансии %s", vacancy.get("id"))
+        logger.warning("Скоринг не удался для вакансии %s", vacancy.get("id"), exc_info=True)
         return None
     try:
         database.save_vacancy_score(result, PROMPT_VERSION)
     except Exception:
-        logger.warning("Не удалось сохранить скор вакансии %s", vacancy.get("id"))
+        logger.warning("Не удалось сохранить скор вакансии %s", vacancy.get("id"), exc_info=True)
     return result
 
 
