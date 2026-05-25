@@ -34,17 +34,15 @@ def _login(page) -> bool:
         page.goto(BASE_URL, wait_until="domcontentloaded", timeout=20_000)
         page.wait_for_timeout(1500)
 
-        login_btn = page.query_selector("a[href*='login'], a[href*='sign'], button:has-text('Войти'), a:has-text('Войти')")
-        if login_btn:
-            login_btn.click()
-            page.wait_for_timeout(2000)
+        page.click("button.pd-login-btn")
+        page.wait_for_selector("input[type='email']", timeout=5000)
 
         page.fill("input[type='email']", config.HIRIFY_EMAIL)
         page.fill("input[type='password']", config.HIRIFY_PASSWORD)
-        page.click("button[type='submit']")
+        page.click("button:has-text('Вход')")
         page.wait_for_timeout(3000)
 
-        logged_in = "войти" not in page.content().lower() or page.query_selector("[class*='avatar'], [class*='user-menu'], [class*='profile']") is not None
+        logged_in = page.query_selector("button.pd-login-btn") is None
         if logged_in:
             logger.info("[hirify] Логин успешен")
         else:
