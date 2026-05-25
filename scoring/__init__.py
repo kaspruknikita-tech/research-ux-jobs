@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from .brand_scorer import call_brand_scorer
 from .llm_scorer import PROMPT_VERSION, call_llm, call_llm_enrich_only
 from .models import PostEnrichment, ScoringInput, ScoringResult
 from .pre_filter import check_post_completeness, pre_filter
@@ -113,14 +114,21 @@ def score_vacancy(vacancy: dict) -> ScoringResult:
     regex_score = check_post_completeness(vacancy)
     enrich = regex_score < _COMPLETENESS_THRESHOLD
 
-    raw = call_llm(_make_inp(vacancy, vacancy_id), enrich=enrich)
+    inp = _make_inp(vacancy, vacancy_id)
+    raw = call_llm(inp, enrich=enrich)
     validated = validate_llm_output(raw, full_text, enrichment_used=enrich)
-    # DEBUG: log normalized scoring result — remove before release
     logger.debug("[SCORER NORMALIZED] vacancy_id=%d score=%s tier_inputs=(visa=%s reloc=%s remote=%s)",
                  vacancy_id, validated.get("score"), validated.get("visa_sponsorship"),
                  validated.get("relocation_support"), validated.get("remote_policy"))
+
+    brand_data = call_brand_scorer(inp)
+    brand_boost = brand_data.get("brand_boost", 0)
+    effective_score = max(0, min(10, validated["score"] + brand_boost))
+    logger.info("BRAND BOOST: vacancy_id=%d base_score=%d boost=%d effective=%d tag=%s",
+                vacancy_id, validated["score"], brand_boost, effective_score, brand_data.get("brand_tag"))
+
     tier, action = map_tier(
-        validated["score"],
+        effective_score,
         validated["visa_sponsorship"],
         validated["relocation_support"],
     )
@@ -151,6 +159,7 @@ def score_vacancy(vacancy: dict) -> ScoringResult:
         reason=validated.get("reason", ""),
         model_used=raw.get("model_used", ""),
         latency_ms=raw.get("latency_ms", 0),
+        brand_data=brand_data,
     )
 
 

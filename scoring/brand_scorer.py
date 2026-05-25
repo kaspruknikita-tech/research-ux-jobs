@@ -1,0 +1,111 @@
+from __future__ import annotations
+
+import json
+import logging
+import os
+import time
+
+from openai import OpenAI
+
+from .models import ScoringInput
+
+logger = logging.getLogger(__name__)
+
+MODEL = "perplexity/sonar"
+
+_SYSTEM_PROMPT = """Ты — Market Intelligence Analyst и Lead UX/CX Researcher.
+Твоя задача — глубокий анализ вакансии и стоящего за ней IT-бренда.
+
+Целевая аудитория: продуктовые исследователи, социологи и антропологи из СНГ,
+которые ищут сильные компании для релокации или удалённой B2B-работы.
+
+ОГРАНИЧЕНИЯ:
+- ИГНОРИРУЙ фразу "Sorry, this job is not available in your region" — это баг парсера, не признак отсутствия релокации.
+- Оценивая бренд — используй свою базу знаний и веб-поиск.
+- Оценивая роль — смотри только в текст вакансии.
+- Весь текст в полях на русском языке.
+
+НАЗНАЧЬ brand_boost — влияние бренда на итоговый тир вакансии:
+  2  — Tier 1: FAANG, глобально известные продуктовые компании (Google, Spotify, Notion, Figma...)
+  1  — Tier 2: известные в IT (mid-size SaaS, B2B-платформы, growing scale-ups)
+  0  — Нишевый: известны в конкретной вертикали, небольшой масштаб
+ -1  — Неизвестный: нет значимого веб-присутствия, или есть серьёзные красные флаги (массовые сокращения, скандалы)
+
+СТРОГО JSON, без markdown, без текста вне JSON:
+{
+  "brand_tag": "Tier 1 | Tier 2 | Нишевый | Неизвестный",
+  "brand_boost": <integer: -1, 0, 1 or 2>,
+  "about_company": "<1-2 предложения — чем занимается, ключевые продукты, позиция на рынке>",
+  "industry": "<например: Enterprise SaaS, Legal Tech, FinTech>",
+  "scale": "<например: 5000 сотрудников, публичная компания, Series C>",
+  "green_flags": ["<конкретный факт>", "<конкретный факт>"],
+  "red_flags": ["<конкретный факт>" или "Не обнаружено"],
+  "role_fact_check": "<точная короткая цитата из текста вакансии про задачи роли, до 20 слов>",
+  "verdict": "<2-3 предложения — насколько крутая вакансия и стоит ли тратить на неё время>"
+}"""
+
+
+def _build_user_message(inp: ScoringInput) -> str:
+    parts = [f"Компания: {inp.company}", f"Вакансия: {inp.title}"]
+    if inp.location:
+        parts.append(f"Локация: {inp.location}")
+    parts.append(f"\nОписание:\n{inp.description}")
+    return "\n".join(parts)
+
+
+def call_brand_scorer(inp: ScoringInput) -> dict:
+    """Возвращает dict с brand_boost и качественным анализом бренда.
+    При ошибке возвращает нейтральный результат (brand_boost=0) без падения пайплайна."""
+    client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=os.environ["OPENROUTER_API_KEY"],
+    )
+    messages = [
+        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "user", "content": _build_user_message(inp)},
+    ]
+
+    t0 = time.monotonic()
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=messages,
+            max_tokens=500,
+            temperature=0,
+            timeout=20.0,
+        )
+        latency_ms = int((time.monotonic() - t0) * 1000)
+        raw = response.choices[0].message.content
+        logger.debug("[BRAND RAW] vacancy_id=%d content=%.500r", inp.vacancy_id, raw)
+
+        data = json.loads(raw)
+        usage = response.usage
+        total_tokens = (usage.prompt_tokens + usage.completion_tokens) if usage else 0
+        logger.info(
+            "BRAND: model=%s latency=%dms tokens=%d vacancy_id=%d tag=%s boost=%s",
+            MODEL, latency_ms, total_tokens, inp.vacancy_id,
+            data.get("brand_tag"), data.get("brand_boost"),
+        )
+        data["model_used"] = MODEL
+        data["latency_ms"] = latency_ms
+        # Clamp brand_boost to [-1, 2]
+        data["brand_boost"] = max(-1, min(2, int(data.get("brand_boost", 0))))
+        return data
+
+    except Exception as exc:
+        latency_ms = int((time.monotonic() - t0) * 1000)
+        logger.warning("BRAND scorer failed vacancy_id=%d error=%s", inp.vacancy_id, exc)
+        return {
+            "brand_tag": "Неизвестный",
+            "brand_boost": 0,
+            "about_company": "",
+            "industry": "",
+            "scale": "",
+            "green_flags": [],
+            "red_flags": [],
+            "role_fact_check": "",
+            "verdict": "",
+            "model_used": MODEL,
+            "latency_ms": latency_ms,
+            "error": str(exc),
+        }

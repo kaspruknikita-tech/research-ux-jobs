@@ -102,6 +102,7 @@ def init_vacancy_scores() -> None:
             cur.execute("CREATE INDEX IF NOT EXISTS vacancy_scores_vacancy_id_idx ON vacancy_scores(vacancy_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS vacancy_scores_tier_idx ON vacancy_scores(tier)")
             cur.execute("CREATE INDEX IF NOT EXISTS vacancy_scores_scored_at_idx ON vacancy_scores(scored_at)")
+            cur.execute("ALTER TABLE vacancy_scores ADD COLUMN IF NOT EXISTS brand_data JSONB")
         conn.commit()
     finally:
         conn.close()
@@ -125,6 +126,7 @@ def save_vacancy_score(result, prompt_version: str) -> None:
             result.pre_filter_blocked, result.reason,
             result.model_used or None, result.latency_ms or None,
         )
+        brand_json = json.dumps(result.brand_data) if result.brand_data else None
         try:
             with conn.cursor() as cur:
                 cur.execute(
@@ -134,14 +136,14 @@ def save_vacancy_score(result, prompt_version: str) -> None:
                          visa_sponsorship, relocation_support, remote_policy,
                          salary_min, salary_max, salary_currency, experience_level,
                          verbatim_evidence, pre_filter_blocked, reason,
-                         model_used, latency_ms, post_enrichment)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                         model_used, latency_ms, post_enrichment, brand_data)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     """,
-                    base_args + (enrichment_json,),
+                    base_args + (enrichment_json, brand_json),
                 )
             conn.commit()
         except Exception:
-            # Колонка post_enrichment ещё не добавлена (миграция 003 не применена)
+            # Колонки post_enrichment/brand_data ещё не добавлены
             conn.rollback()
             with conn.cursor() as cur:
                 cur.execute(
@@ -157,7 +159,7 @@ def save_vacancy_score(result, prompt_version: str) -> None:
                     base_args,
                 )
             conn.commit()
-            logger.warning("save_vacancy_score: post_enrichment не сохранён — примените миграцию 003")
+            logger.warning("save_vacancy_score: brand_data/post_enrichment не сохранены — примените миграции 003-004")
     finally:
         conn.close()
 

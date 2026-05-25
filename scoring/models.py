@@ -50,6 +50,7 @@ class ScoringResult(BaseModel):
     reason: str
     model_used: str = ""
     latency_ms: int = 0
+    brand_data: dict | None = None
 
     @model_validator(mode="after")
     def salary_range_valid(self) -> "ScoringResult":
