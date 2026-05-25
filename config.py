@@ -44,8 +44,19 @@ TG_SOURCE_CHANNELS: list[str] = [
 ]
 TG_DAYS_BACK: int = int(os.getenv("TG_DAYS_BACK", "7"))
 
+# --- OpenRouter ---
+OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
+# Порог остатка в USD, ниже которого шлётся алерт
+OPENROUTER_BALANCE_THRESHOLD: float = float(os.getenv("OPENROUTER_BALANCE_THRESHOLD", "2.0"))
+
+# --- Railway ---
+RAILWAY_API_TOKEN: str = os.getenv("RAILWAY_API_TOKEN", "")
+# Порог остатка в USD (кредитный баланс), ниже которого шлётся алерт
+RAILWAY_BALANCE_THRESHOLD: float = float(os.getenv("RAILWAY_BALANCE_THRESHOLD", "2.0"))
+
 # --- Планировщик ---
 PARSE_INTERVAL_MINUTES: int = int(os.getenv("PARSE_INTERVAL_MINUTES", "30"))
+BALANCE_CHECK_INTERVAL_MINUTES: int = int(os.getenv("BALANCE_CHECK_INTERVAL_MINUTES", "60"))
 
 # --- База данных ---
 DATABASE_URL: str = os.getenv("DATABASE_URL", "")

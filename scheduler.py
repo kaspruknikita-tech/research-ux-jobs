@@ -27,6 +27,7 @@ from parsers.hirify import HirifyParser
 from filters.stopwords import apply_filters
 from filters.dedup import is_duplicate
 from exporters.sheets import export_to_sheets, export_rejected_to_sheets
+from bot.alerts import check_balances
 
 logging.basicConfig(
     level=logging.INFO,
@@ -155,6 +156,9 @@ def start_scheduler() -> None:
     logger.info("Первый запуск цикла...")
     run_cycle()
 
+    logger.info("Проверка балансов при старте...")
+    check_balances()
+
     scheduler = BlockingScheduler(timezone="Europe/Moscow")
     scheduler.add_job(
         run_cycle,
@@ -163,9 +167,17 @@ def start_scheduler() -> None:
         id="main_cycle",
         max_instances=1,
     )
+    scheduler.add_job(
+        check_balances,
+        "interval",
+        minutes=config.BALANCE_CHECK_INTERVAL_MINUTES,
+        id="balance_check",
+        max_instances=1,
+    )
     logger.info(
-        "Шедулер запущен. Интервал: %d мин. Ctrl+C для остановки.",
+        "Шедулер запущен. Интервал парсинга: %d мин. Проверка баланса: %d мин. Ctrl+C для остановки.",
         config.PARSE_INTERVAL_MINUTES,
+        config.BALANCE_CHECK_INTERVAL_MINUTES,
     )
 
     try:

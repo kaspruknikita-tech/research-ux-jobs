@@ -224,7 +224,10 @@ def publish_due_scheduled() -> int:
             published += 1
             logger.info("Опубликована запланированная вакансия id=%s", v["id"])
         except Exception:
-            logger.exception("Ошибка публикации запланированной вакансии id=%s", v["id"])
+            logger.exception(
+                "Ошибка публикации запланированной вакансии id=%s channel=%s chat_id=%r",
+                v["id"], v.get("channel"), channel_id,
+            )
         time.sleep(_SEND_DELAY)
 
     return published
