@@ -1,10 +1,8 @@
 """
 Парсер hirify.me (DOM-скрапинг через Playwright).
-Если задан HIRIFY_COOKIES — использует сохранённую сессию для получения названий компаний.
-Cookies получаются через: python gen_hirify_cookies.py
+Если заданы HIRIFY_EMAIL/HIRIFY_PASSWORD — логинится для получения названий компаний.
 """
 
-import json
 import logging
 
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
@@ -31,6 +29,32 @@ _UA = (
 )
 
 
+def _login(page) -> bool:
+    try:
+        page.goto(BASE_URL, wait_until="domcontentloaded", timeout=20_000)
+        page.wait_for_timeout(1500)
+
+        login_btn = page.query_selector("a[href*='login'], a[href*='sign'], button:has-text('Войти'), a:has-text('Войти')")
+        if login_btn:
+            login_btn.click()
+            page.wait_for_timeout(2000)
+
+        page.fill("input[type='email']", config.HIRIFY_EMAIL)
+        page.fill("input[type='password']", config.HIRIFY_PASSWORD)
+        page.click("button[type='submit']")
+        page.wait_for_timeout(3000)
+
+        logged_in = "войти" not in page.content().lower() or page.query_selector("[class*='avatar'], [class*='user-menu'], [class*='profile']") is not None
+        if logged_in:
+            logger.info("[hirify] Логин успешен")
+        else:
+            logger.warning("[hirify] Логин мог не сработать")
+        return logged_in
+    except Exception:
+        logger.exception("[hirify] Ошибка при логине")
+        return False
+
+
 def _get_description(page, url: str) -> str:
     try:
         page.goto(url, wait_until="domcontentloaded", timeout=20_000)
@@ -53,24 +77,16 @@ class HirifyParser(BaseParser):
     def fetch(self) -> list[dict]:
         result = []
         seen: set[str] = set()
-
-        cookies = None
-        if config.HIRIFY_COOKIES:
-            try:
-                cookies = json.loads(config.HIRIFY_COOKIES)
-                logger.info("[hirify] Cookies загружены (%d шт.)", len(cookies))
-            except Exception:
-                logger.warning("[hirify] Не удалось распарсить HIRIFY_COOKIES")
+        use_auth = bool(config.HIRIFY_EMAIL and config.HIRIFY_PASSWORD)
 
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=True)
             ctx = browser.new_context(user_agent=_UA)
-
-            if cookies:
-                ctx.add_cookies(cookies)
-
             list_page = ctx.new_page()
             detail_page = ctx.new_page()
+
+            if use_auth:
+                _login(list_page)
 
             for query in SEARCH_QUERIES:
                 search_url = f"{BASE_URL}/?search={query.replace(' ', '+')}"
