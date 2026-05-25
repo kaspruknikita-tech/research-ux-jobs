@@ -45,8 +45,7 @@ TG_SOURCE_CHANNELS: list[str] = [
 TG_DAYS_BACK: int = int(os.getenv("TG_DAYS_BACK", "7"))
 
 # --- Hirify ---
-HIRIFY_EMAIL: str = os.getenv("HIRIFY_EMAIL", "")
-HIRIFY_PASSWORD: str = os.getenv("HIRIFY_PASSWORD", "")
+HIRIFY_COOKIES: str = os.getenv("HIRIFY_COOKIES", "")
 
 # --- OpenRouter ---
 OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
