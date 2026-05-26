@@ -74,6 +74,27 @@ def _scoring_footer(result: ScoringResult) -> str:
     if result.needs_enrichment:
         lines.append("⚠️ Неполные данные, проверь вручную")
 
+    bd = result.brand_data
+    if bd and bd.get("brand_tag") and not bd.get("error"):
+        lines.append("")
+        tag = bd.get("brand_tag", "")
+        industry = bd.get("industry", "")
+        scale = bd.get("scale", "")
+        meta = " · ".join(filter(None, [industry, scale]))
+        lines.append(f"🏷 {tag}" + (f" · {meta}" if meta else ""))
+        if bd.get("about_company"):
+            lines.append(bd["about_company"])
+        greens = bd.get("green_flags") or []
+        if greens:
+            lines.append("✅ " + " · ".join(greens[:2]))
+        reds = [r for r in (bd.get("red_flags") or []) if r and r != "Не обнаружено"]
+        if reds:
+            lines.append("⚠️ " + " · ".join(reds[:2]))
+        if bd.get("role_fact_check"):
+            lines.append(f"📋 Роль: «{bd['role_fact_check']}»")
+        if bd.get("verdict"):
+            lines.append(f"💡 {bd['verdict']}")
+
     return "\n\n" + "\n".join(lines)
 
 
@@ -137,6 +158,7 @@ def _row_to_scoring_result(row: dict, vacancy_id: int) -> ScoringResult:
         reason=row.get("reason") or "",
         model_used=row.get("model_used") or "",
         latency_ms=row.get("latency_ms") or 0,
+        brand_data=row.get("brand_data"),
     )
 
 
