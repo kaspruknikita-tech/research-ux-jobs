@@ -206,6 +206,14 @@ COMPANIES = [
     # Авто-добавлено discover_ats_by_name.py 2026-05-29
     "red-oak",
     "sift",
+    # Авто-добавлено discover_ats_by_name.py 2026-05-30
+    "abundant",
+    "backmarket",
+    "brigit",
+    "buildout",
+    "faculty",
+    "prodigy-education",
+    "prokeep",
 ]
 
 WHITELIST = [

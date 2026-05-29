@@ -321,6 +321,14 @@ COMPANIES = [
     "customerio",
     "platformsh",
     "rocketchat",
+    # Авто-добавлено discover_ats_by_name.py 2026-05-30
+    "brooklinen",
+    "cleo",
+    "ians",
+    "justworks",
+    "litify",
+    "renaissancelearning-nam",
+    "sharkninjaoperatingllc",
 ]
 
 WHITELIST = [
