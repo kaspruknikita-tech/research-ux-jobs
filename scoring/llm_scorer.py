@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 PROMPT_VERSION = "v1"
 
 MODELS = [
-    {"id": "google/gemini-2.5-flash-lite", "max_tokens": 1000, "priority": 1},
-    {"id": "mistralai/mistral-small-3.1", "max_tokens": 1000, "priority": 2},
-    {"id": "meta-llama/llama-3.3-70b-instruct:free", "max_tokens": 1000, "priority": 3},
+    {"id": "google/gemini-2.5-flash-lite", "max_tokens": 2000, "priority": 1},
+    {"id": "mistralai/mistral-small-3.2-24b-instruct", "max_tokens": 2000, "priority": 2},
+    {"id": "meta-llama/llama-3.3-70b-instruct", "max_tokens": 2000, "priority": 3},
 ]
 
 _SCORING_INSTRUCTIONS = """

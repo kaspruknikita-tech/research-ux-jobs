@@ -12,6 +12,25 @@ from .models import ScoringInput
 logger = logging.getLogger(__name__)
 
 MODEL = "perplexity/sonar"
+MAX_TOKENS = 1500
+
+
+def _extract_json(raw: str) -> dict:
+    """Вытаскивает JSON-объект из ответа модели. Толерантен к markdown-fence,
+    тексту до/после, и одному обрезанному хвосту."""
+    raw = (raw or "").strip()
+    if raw.startswith("```"):
+        raw = raw.split("```", 2)[1]
+        if raw.lstrip().startswith("json"):
+            raw = raw.lstrip()[4:]
+        raw = raw.rsplit("```", 1)[0]
+    raw = raw.strip()
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start == -1:
+        raise ValueError("В ответе нет '{'")
+    candidate = raw[start:end + 1] if end > start else raw[start:]
+    return json.loads(candidate)
 
 _SYSTEM_PROMPT = """Ты — Market Intelligence Analyst и Lead UX/CX Researcher.
 Твоя задача — глубокий анализ вакансии и стоящего за ней IT-бренда.
@@ -70,7 +89,7 @@ def call_brand_scorer(inp: ScoringInput) -> dict:
         response = client.chat.completions.create(
             model=MODEL,
             messages=messages,
-            max_tokens=500,
+            max_tokens=MAX_TOKENS,
             temperature=0,
             timeout=20.0,
         )
@@ -78,7 +97,7 @@ def call_brand_scorer(inp: ScoringInput) -> dict:
         raw = response.choices[0].message.content
         logger.debug("[BRAND RAW] vacancy_id=%d content=%.500r", inp.vacancy_id, raw)
 
-        data = json.loads(raw)
+        data = _extract_json(raw)
         usage = response.usage
         total_tokens = (usage.prompt_tokens + usage.completion_tokens) if usage else 0
         logger.info(

@@ -5,6 +5,7 @@ API: https://api.ashbyhq.com/posting-api/job-board/{board_token}?includeCompensa
 """
 
 import logging
+import time
 
 import requests
 
@@ -13,6 +14,9 @@ from parsers.base import BaseParser
 logger = logging.getLogger(__name__)
 
 API_URL = "https://api.ashbyhq.com/posting-api/job-board/{board_token}?includeCompensation=true"
+REQUEST_TIMEOUT = 30
+MAX_RETRIES = 2
+RETRY_BACKOFF_SEC = 5
 
 # Верифицированные board_token компаний на Ashby (API возвращает 200).
 # Токены регистрозависимы — берём как в jobs.ashbyhq.com/{token}.
@@ -81,22 +85,40 @@ class AshbyParser(BaseParser):
     source_name = "ashby"
     channel = "global"
 
+    def _fetch_board(self, board_token: str, url: str) -> dict | None:
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                resp = requests.get(url, timeout=REQUEST_TIMEOUT)
+                if resp.status_code == 404:
+                    return None
+                resp.raise_for_status()
+                return resp.json()
+            except requests.Timeout:
+                err_type, err_detail = "Timeout", f"{REQUEST_TIMEOUT}s"
+            except requests.HTTPError as e:
+                code = getattr(e.response, "status_code", "?")
+                err_type, err_detail = "HTTPError", str(code)
+                if code in (401, 403, 404):
+                    logger.warning("[ashby] %s — %s %s (no retry)", board_token, err_type, err_detail)
+                    return None
+            except requests.RequestException as e:
+                err_type, err_detail = e.__class__.__name__, str(e)
+
+            if attempt < MAX_RETRIES:
+                logger.info("[ashby] %s — %s %s, retry %d/%d через %ds",
+                            board_token, err_type, err_detail, attempt, MAX_RETRIES, RETRY_BACKOFF_SEC)
+                time.sleep(RETRY_BACKOFF_SEC)
+            else:
+                logger.warning("[ashby] %s — %s %s (исчерпаны попытки)",
+                               board_token, err_type, err_detail)
+        return None
+
     def fetch(self) -> list[dict]:
         result = []
         for board_token in COMPANIES:
             url = API_URL.format(board_token=board_token)
-            try:
-                resp = requests.get(url, timeout=30)
-                if resp.status_code == 404:
-                    continue
-                resp.raise_for_status()
-                data = resp.json()
-            except requests.RequestException as e:
-                logger.warning(
-                    "[ashby] %s — ошибка: %s",
-                    board_token,
-                    getattr(getattr(e, "response", None), "status_code", str(e)),
-                )
+            data = self._fetch_board(board_token, url)
+            if data is None:
                 continue
 
             for job in data.get("jobs", []):
