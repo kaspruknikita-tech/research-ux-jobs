@@ -6,6 +6,7 @@ from .brand_scorer import call_brand_scorer
 from .llm_scorer import PROMPT_VERSION, call_llm, call_llm_enrich_only
 from .models import PostEnrichment, ScoringInput, ScoringResult
 from .pre_filter import check_post_completeness, pre_filter
+from .score_combiner import combine_score
 from .tier_mapper import map_tier
 from .validator import validate_llm_output
 
@@ -25,7 +26,7 @@ def _clean_company(company: str | None) -> str:
 
 
 def _neutral_brand() -> dict:
-    """Бренд неизвестен (компания не определена) — без вызова Perplexity, нулевой boost."""
+    """Бренд неизвестен (компания не определена) — без вызова Perplexity."""
     return {
         "brand_tag": "Неизвестный",
         "brand_boost": 0,
@@ -107,7 +108,6 @@ def score_vacancy(vacancy: dict) -> ScoringResult:
         vacancy.get("location", ""),
     ]))
 
-    # Hard gate — blacklist
     blocked, matched = pre_filter(full_text)
     if blocked:
         return ScoringResult(
@@ -139,26 +139,35 @@ def score_vacancy(vacancy: dict) -> ScoringResult:
     inp = _make_inp(vacancy, vacancy_id)
     raw = call_llm(inp, enrich=enrich)
     validated = validate_llm_output(raw, full_text, enrichment_used=enrich)
-    logger.debug("[SCORER NORMALIZED] vacancy_id=%d score=%s tier_inputs=(visa=%s reloc=%s remote=%s)",
-                 vacancy_id, validated.get("score"), validated.get("visa_sponsorship"),
-                 validated.get("relocation_support"), validated.get("remote_policy"))
 
-    # Бренд скорим только если компания реально определена. Иначе Perplexity
-    # домысливает работодателя из обрывков (раньше так попадал 'hirify.global').
     if inp.company:
         brand_data = call_brand_scorer(inp)
     else:
         logger.info("BRAND: компания не определена (vacancy_id=%d) — пропуск brand scorer", vacancy_id)
         brand_data = _neutral_brand()
-    brand_boost = brand_data.get("brand_boost", 0)
-    effective_score = max(0, min(10, validated["score"] + brand_boost))
-    logger.info("BRAND BOOST: vacancy_id=%d base_score=%d boost=%d effective=%d tag=%s",
-                vacancy_id, validated["score"], brand_boost, effective_score, brand_data.get("brand_tag"))
 
-    tier, action = map_tier(
-        effective_score,
-        validated["visa_sponsorship"],
-        validated["relocation_support"],
+    salary_disclosed = (
+        validated.get("salary_min") is not None
+        or validated.get("salary_max") is not None
+    )
+
+    score, breakdown = combine_score(
+        visa=validated["visa_sponsorship"],
+        reloc=validated["relocation_support"],
+        remote=validated["remote_policy"],
+        brand_tag=brand_data.get("brand_tag"),
+        salary_disclosed=salary_disclosed,
+        exceptional_salary=validated["exceptional_salary"],
+        experience_level=validated["experience_level"],
+        research_maturity=validated["research_maturity"],
+        vague_jd=validated["vague_jd"],
+    )
+
+    tier, action = map_tier(score)
+
+    logger.info(
+        "SCORE: vacancy_id=%d score=%d tier=%s breakdown=%s brand=%s",
+        vacancy_id, score, tier, breakdown, brand_data.get("brand_tag"),
     )
 
     enrichment_data = validated.get("post_enrichment") if enrich else None
@@ -168,8 +177,8 @@ def score_vacancy(vacancy: dict) -> ScoringResult:
         vacancy_id=vacancy_id,
         tier=tier,
         action=action,
-        score=validated["score"],
-        score_breakdown=validated.get("score_breakdown") or {},
+        score=score,
+        score_breakdown=breakdown,
         visa_sponsorship=validated["visa_sponsorship"],
         relocation_support=validated["relocation_support"],
         remote_policy=validated["remote_policy"],

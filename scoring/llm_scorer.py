@@ -13,6 +13,20 @@ logger = logging.getLogger(__name__)
 
 PROMPT_VERSION = "v1"
 
+
+_client: OpenAI | None = None
+
+
+def _get_client() -> OpenAI:
+    """Ленивый module-level OpenAI клиент. Один httpx-pool на процесс."""
+    global _client
+    if _client is None:
+        _client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.environ["OPENROUTER_API_KEY"],
+        )
+    return _client
+
 MODELS = [
     {"id": "google/gemini-2.5-flash-lite", "max_tokens": 2000, "priority": 1},
     {"id": "mistralai/mistral-small-3.2-24b-instruct", "max_tokens": 2000, "priority": 2},
@@ -20,37 +34,30 @@ MODELS = [
 ]
 
 _SCORING_INSTRUCTIONS = """
-## STEP 1: EXTRACT
+## EXTRACTION TASK
 
-For each field, only assign a value if evidence is explicitly or implicitly in the text. Otherwise use "unclear" or null.
+Extract these fields from the job posting. Only assign a value if evidence is explicitly or implicitly in the text. Do NOT calculate any score — scoring is done separately by the system.
 
-- visa_sponsorship: "yes" (explicitly offered), "implied" (e.g. "open to candidates worldwide", "will help with work authorization"), "no" (explicitly denied), "unclear"
-- relocation_support: "yes" (explicitly offered), "implied" (hints at relocation package), "no", "unclear"
-- remote_policy: "global" (remote, no geo restriction), "eu" (remote but EU/EMEA only), "hybrid" (partially remote), "on_site" (no remote option)
+- visa_sponsorship: "yes" (explicitly offered), "implied" (e.g. "open worldwide", "will help with work authorization"), "no" (explicitly denied), "unclear"
+- relocation_support: "yes", "implied" (hints at relocation package), "no", "unclear"
+- remote_policy: "global" (remote, no geo restriction), "eu" (remote but EU/EMEA only), "hybrid", "on_site", "unclear"
 - salary_min, salary_max: integers, null if not mentioned
-- salary_currency: 3-letter code like "USD" or "EUR", null if not mentioned
-- experience_level: "junior" (<2 years), "mid" (2–5 years), "senior" (5+ years), "lead", "unclear"
+- salary_currency: 3-letter code "USD"/"EUR"/"GBP"/etc, null if not mentioned
+- experience_level: "junior" (<2y), "mid" (2–5y), "senior" (5+y), "lead", "unclear"
+
+- exceptional_salary: true ONLY if salary is clearly top-of-market for the role:
+  - junior: max >= $80k/y (or €70k, £65k, ₽9M/y)
+  - mid: max >= $130k/y (or €115k, £105k, ₽15M/y)
+  - senior/lead: max >= $180k/y (or €160k, £140k, ₽21M/y)
+  false if salary missing or below thresholds.
+
+- research_maturity: true if posting explicitly mentions mature research practice — mixed methods, research ops, JTBD, longitudinal studies, ethnography, Dovetail/Maze/dscout, quantitative + qualitative combined. false otherwise.
+
+- vague_jd: true if posting uses buzzwords ("rockstar", "ninja", "wear many hats") OR lists 5+ unrelated duties without specifics OR is mostly fluff. false if concrete and structured.
+
 - verbatim_evidence: for visa_sponsorship, relocation_support, remote_policy — exact quote from text (≤ 20 words). Omit the key if value is "unclear" or "no".
 
-## STEP 2: SCORE (additive, clamp to 0–10)
-
-Apply only signals with clear evidence in the text.
-
-Positive signals:
-- visa_confirmed: +4 (visa_sponsorship is "yes" or "implied")
-- relocation_confirmed: +4 (relocation_support is "yes" or "implied")
-- remote_global: +3 (remote_policy is "global")
-- remote_eu: +2 (remote_policy is "eu")
-- strong_brand: +2 (Fortune 500 or well-known international company)
-- research_maturity: +2 (mentions mixed methods, research ops, Dovetail, Maze, dscout, or similar tools)
-- salary_disclosed: +1 (salary_min or salary_max is not null)
-- senior_level: +1 (experience_level is "mid", "senior", or "lead")
-
-Negative signals:
-- on_site_only: -4 (remote_policy is "on_site")
-- vague_jd: -2 (5+ unrelated duties, or buzzwords: rockstar, ninja, wear many hats)
-- local_preferred: -2 (soft signal that local candidates are preferred)
-- unclear_geography: -1 (no mention of remote or location at all)
+- reason: 1-2 sentences in Russian for the moderator. What this role is, main pros/cons.
 """
 
 _ENRICH_INSTRUCTIONS = """
@@ -83,36 +90,38 @@ _ENRICH_RU_INSTRUCTIONS = """
 _OUTPUT_SCORE_ONLY = """{
   "visa_sponsorship": "yes|implied|no|unclear",
   "relocation_support": "yes|implied|no|unclear",
-  "remote_policy": "global|eu|hybrid|on_site",
+  "remote_policy": "global|eu|hybrid|on_site|unclear",
   "salary_min": <integer or null>,
   "salary_max": <integer or null>,
   "salary_currency": "<3-letter code or null>",
   "experience_level": "junior|mid|senior|lead|unclear",
+  "exceptional_salary": <true|false>,
+  "research_maturity": <true|false>,
+  "vague_jd": <true|false>,
   "verbatim_evidence": {
     "visa_sponsorship": "<exact quote ≤ 20 words, omit key if unclear/no>",
     "relocation_support": "<exact quote ≤ 20 words, omit key if unclear/no>",
     "remote_policy": "<exact quote ≤ 20 words, omit key if unclear/no>"
   },
-  "score": <integer 0-10>,
-  "score_breakdown": {"<signal_name>": <integer>},
   "reason": "<1-2 sentences in Russian for the moderator>"
 }"""
 
 _OUTPUT_WITH_ENRICH = """{
   "visa_sponsorship": "yes|implied|no|unclear",
   "relocation_support": "yes|implied|no|unclear",
-  "remote_policy": "global|eu|hybrid|on_site",
+  "remote_policy": "global|eu|hybrid|on_site|unclear",
   "salary_min": <integer or null>,
   "salary_max": <integer or null>,
   "salary_currency": "<3-letter code or null>",
   "experience_level": "junior|mid|senior|lead|unclear",
+  "exceptional_salary": <true|false>,
+  "research_maturity": <true|false>,
+  "vague_jd": <true|false>,
   "verbatim_evidence": {
     "visa_sponsorship": "<exact quote ≤ 20 words, omit key if unclear/no>",
     "relocation_support": "<exact quote ≤ 20 words, omit key if unclear/no>",
     "remote_policy": "<exact quote ≤ 20 words, omit key if unclear/no>"
   },
-  "score": <integer 0-10>,
-  "score_breakdown": {"<signal_name>": <integer>},
   "reason": "<1-2 sentences in Russian for the moderator>",
   "post_enrichment": {
     "summary": "<1-2 sentences in posting language>",
@@ -135,11 +144,11 @@ _OUTPUT_ENRICH_ONLY = """{
   }
 }"""
 
-_BASE_SYSTEM_PROMPT = """You are a vacancy scoring assistant for UX/CX researcher job postings.
+_BASE_SYSTEM_PROMPT = """You are an extraction assistant for UX/CX researcher job postings.
 
 TARGET AUDIENCE: UX and CX researchers from CIS countries seeking remote work, visa sponsorship, or relocation support.
 
-ROLE CHECK: If the vacancy is for a designer, product manager, data analyst, or any non-researcher role — return score=0, all extraction fields set to "unclear" or null, omit post_enrichment, and explain in reason why it is not a researcher role.
+ROLE CHECK: If the vacancy is for a designer, product manager, data analyst, or any non-researcher role — set all extraction fields to "unclear"/null/false, omit post_enrichment, and explain in reason why it is not a researcher role.
 
 All signals must have evidence in the text. Do not invent data.
 Strict JSON only. No markdown. No text outside JSON."""
@@ -187,10 +196,7 @@ def _build_user_message(inp: ScoringInput) -> str:
 
 
 def call_with_fallback(messages: list[dict], vacancy_id: int, label: str) -> dict:
-    client = OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=os.environ["OPENROUTER_API_KEY"],
-    )
+    client = _get_client()
     # DEBUG: log scorer input — remove before release
     logger.debug("[SCORER INPUT] vacancy_id=%d label=%s prompt_chars=%d",
                  vacancy_id, label, sum(len(m.get("content", "")) for m in messages))

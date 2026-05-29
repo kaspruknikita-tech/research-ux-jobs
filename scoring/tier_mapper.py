@@ -7,20 +7,18 @@ _ACTIONS: dict[str, str] = {
     "C": "skip",
 }
 
-_POSITIVE = {"yes", "implied"}
+# Score → tier. Прямое отображение, без hard gate по визе/релоку.
+# Доступ/виза/бренд уже учтены в score через score_combiner.
+_THRESHOLDS: list[tuple[int, str]] = [
+    (9, "S"),
+    (7, "A"),
+    (4, "B"),
+    (0, "C"),
+]
 
-# tier_table[has_visa][has_reloc] = list of (min_score, tier) descending
-_TIER_TABLE = {
-    (True, True):   [(8, "S"), (5, "A"), (3, "A"), (0, "B")],
-    (True, False):  [(8, "A"), (5, "A"), (3, "B"), (0, "C")],
-    (False, True):  [(8, "A"), (5, "A"), (3, "B"), (0, "C")],
-    (False, False): [(8, "B"), (5, "B"), (3, "B"), (0, "C")],
-}
 
-
-def map_tier(score: int, visa: str, reloc: str) -> tuple[str, str]:
-    key = (visa in _POSITIVE, reloc in _POSITIVE)
-    for min_score, tier in _TIER_TABLE[key]:
+def map_tier(score: int) -> tuple[str, str]:
+    for min_score, tier in _THRESHOLDS:
         if score >= min_score:
             return tier, _ACTIONS[tier]
     return "C", _ACTIONS["C"]

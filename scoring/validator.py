@@ -23,8 +23,9 @@ _FIELD_DEFAULTS: dict = {
     "salary_min": None,
     "salary_max": None,
     "salary_currency": None,
-    "score": 0,
-    "score_breakdown": {},
+    "exceptional_salary": False,
+    "research_maturity": False,
+    "vague_jd": False,
     "reason": "",
     "verbatim_evidence": {},
 }
@@ -33,6 +34,8 @@ _VALID_REMOTE_POLICY = {"global", "eu", "hybrid", "on_site", "unclear"}
 _VALID_SPONSORSHIP = {"yes", "implied", "no", "unclear"}
 _VALID_EXPERIENCE = {"junior", "mid", "senior", "lead", "unclear"}
 
+_BOOL_FIELDS = ("exceptional_salary", "research_maturity", "vague_jd")
+
 
 def _enrich_val(raw: dict, dotpath: str):
     enrich = raw.get("post_enrichment") or {}
@@ -40,13 +43,23 @@ def _enrich_val(raw: dict, dotpath: str):
     return enrich.get(key)
 
 
+def _to_bool(v) -> bool:
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, str):
+        return v.lower() in ("true", "yes", "1")
+    return bool(v)
+
+
 def validate_llm_output(raw: dict | None, full_text: str, enrichment_used: bool) -> dict:
     """
     - Нормализует None/не-dict входные данные в safe dict
     - Заполняет отсутствующие поля дефолтами
     - Проверяет verbatim-цитаты: если цитата не найдена в тексте → поле в "unclear"
-    - Клampует score в [0, 10]
+    - Приводит булевы поля к bool
     - Считает completeness_score и выставляет needs_enrichment
+
+    Score НЕ считается здесь — это делает score_combiner поверх извлечённых полей.
     """
     if not isinstance(raw, dict):
         raw = {}
@@ -54,7 +67,6 @@ def validate_llm_output(raw: dict | None, full_text: str, enrichment_used: bool)
     for key, default in _FIELD_DEFAULTS.items():
         raw.setdefault(key, default)
 
-    # Нормализуем enum-поля до допустимых значений
     if raw["remote_policy"] not in _VALID_REMOTE_POLICY:
         raw["remote_policy"] = "unclear"
     if raw["visa_sponsorship"] not in _VALID_SPONSORSHIP:
@@ -64,7 +76,9 @@ def validate_llm_output(raw: dict | None, full_text: str, enrichment_used: bool)
     if raw["experience_level"] not in _VALID_EXPERIENCE:
         raw["experience_level"] = "unclear"
 
-    # reason должен быть строкой
+    for field in _BOOL_FIELDS:
+        raw[field] = _to_bool(raw.get(field))
+
     if not isinstance(raw["reason"], str):
         raw["reason"] = str(raw["reason"]) if raw["reason"] else ""
 
@@ -80,7 +94,6 @@ def validate_llm_output(raw: dict | None, full_text: str, enrichment_used: bool)
                 evidence.pop(field, None)
 
     raw["verbatim_evidence"] = evidence
-    raw["score"] = max(0, min(10, int(raw.get("score") or 0)))
 
     filled = sum(1 for field, check in _LLM_FIELDS if check(raw.get(field, "unclear")))
     total = len(_LLM_FIELDS)

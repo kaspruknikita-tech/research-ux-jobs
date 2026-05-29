@@ -95,7 +95,6 @@ def test_validator_keeps_valid_citation():
             "relocation_support": "provide relocation support",
             "remote_policy": "Fully remote, open worldwide",
         },
-        "score": 10,
     }
     result = validate_llm_output(raw, _FULL_TEXT, enrichment_used=False)
     assert result["visa_sponsorship"] == "yes"
@@ -113,7 +112,6 @@ def test_validator_clears_missing_citation():
             "relocation_support": "provide relocation support",
             "remote_policy": "Fully remote, open worldwide",
         },
-        "score": 8,
     }
     result = validate_llm_output(raw, _FULL_TEXT, enrichment_used=False)
     assert result["visa_sponsorship"] == "unclear"
@@ -121,15 +119,18 @@ def test_validator_clears_missing_citation():
     assert result["relocation_support"] == "implied"  # цитата есть — остаётся
 
 
-def test_validator_clamps_score():
-    raw = {"visa_sponsorship": "unclear", "relocation_support": "unclear",
-           "remote_policy": "unclear", "verbatim_evidence": {}, "score": 99}
+def test_validator_normalizes_bool_fields():
+    """Новые булевы поля (exceptional_salary, research_maturity, vague_jd) приходят
+    в разных форматах от LLM — должны нормализоваться в bool."""
+    raw = {
+        "exceptional_salary": "true",
+        "research_maturity": 1,
+        "vague_jd": False,
+    }
     result = validate_llm_output(raw, "", enrichment_used=False)
-    assert result["score"] == 10
-
-    raw2 = {**raw, "score": -5}
-    result2 = validate_llm_output(raw2, "", enrichment_used=False)
-    assert result2["score"] == 0
+    assert result["exceptional_salary"] is True
+    assert result["research_maturity"] is True
+    assert result["vague_jd"] is False
 
 
 def test_validator_completeness_score_no_enrich():
@@ -139,12 +140,8 @@ def test_validator_completeness_score_no_enrich():
         "remote_policy": "global",
         "experience_level": "senior",
         "verbatim_evidence": {},
-        "score": 7,
     }
     result = validate_llm_output(raw, "yes global senior", enrichment_used=False)
-    # visa=yes (cleared — нет цитаты), reloc=unclear, remote=global, level=senior
-    # global → не on_site/unclear → считается
-    # 2 из 4 полей заполнены корректно
     assert 0.0 <= result["completeness_score"] <= 1.0
     assert isinstance(result["needs_enrichment"], bool)
 
@@ -153,29 +150,22 @@ def test_validator_completeness_score_no_enrich():
 # tier_mapper
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("score,visa,reloc,expected_tier", [
-    (9, "yes", "yes", "S"),
-    (6, "yes", "yes", "A"),
-    (3, "yes", "yes", "A"),
-    (1, "yes", "yes", "B"),
-    (9, "yes", "no", "A"),
-    (9, "no", "implied", "A"),
-    (3, "yes", "no", "B"),
-    (1, "yes", "unclear", "C"),
-    (9, "no", "no", "B"),
-    (1, "no", "no", "C"),
-    (5, "unclear", "unclear", "B"),
+@pytest.mark.parametrize("score,expected_tier", [
+    (10, "S"), (9, "S"),
+    (8, "A"), (7, "A"),
+    (6, "B"), (5, "B"), (4, "B"),
+    (3, "C"), (1, "C"), (0, "C"),
 ])
-def test_tier_mapping(score, visa, reloc, expected_tier):
-    tier, action = map_tier(score, visa, reloc)
-    assert tier == expected_tier, f"score={score} visa={visa} reloc={reloc} → got {tier}, expected {expected_tier}"
+def test_tier_mapping(score, expected_tier):
+    tier, _ = map_tier(score)
+    assert tier == expected_tier, f"score={score} → got {tier}, expected {expected_tier}"
 
 
 def test_tier_action_mapping():
-    assert map_tier(9, "yes", "yes") == ("S", "curated_plus")
-    assert map_tier(7, "yes", "no") == ("A", "curated")
-    assert map_tier(5, "no", "no") == ("B", "main")
-    assert map_tier(1, "no", "no") == ("C", "skip")
+    assert map_tier(9) == ("S", "curated_plus")
+    assert map_tier(7) == ("A", "curated")
+    assert map_tier(5) == ("B", "main")
+    assert map_tier(1) == ("C", "skip")
 
 
 # ---------------------------------------------------------------------------
@@ -192,16 +182,28 @@ _LLM_RESPONSE_SCORE_ONLY = {
     "salary_max": 130000,
     "salary_currency": "USD",
     "experience_level": "senior",
+    "exceptional_salary": False,
+    "research_maturity": True,
+    "vague_jd": False,
     "verbatim_evidence": {
         "visa_sponsorship": "We sponsor visas",
         "relocation_support": "provide relocation support",  # точная фраза из описания
         "remote_policy": "Fully remote, open worldwide",
     },
-    "score": 9,
-    "score_breakdown": {"visa_confirmed": 4, "relocation_confirmed": 4, "remote_global": 3},
     "reason": "Отличная вакансия: виза, релокация, глобальный ремоут.",
     "model_used": "google/gemini-2.5-flash-lite",
     "latency_ms": 800,
+}
+
+
+_TIER1_BRAND = {
+    "brand_tag": "Tier 1",
+    "brand_boost": 2,
+    "industry": "Design SaaS",
+    "scale": "~3000 чел.",
+    "summary": "Известная компания.",
+    "model_used": "perplexity/sonar",
+    "latency_ms": 500,
 }
 
 
@@ -247,15 +249,16 @@ def test_score_vacancy_scoring_only_mode():
             "<h2>Requirements</h2><ul><li>5+ years</li></ul>"
         ),
     }
-    with patch("scoring.call_llm", return_value=_LLM_RESPONSE_SCORE_ONLY) as mock_llm:
+    with patch("scoring.call_llm", return_value=_LLM_RESPONSE_SCORE_ONLY), \
+         patch("scoring.call_brand_scorer", return_value=_TIER1_BRAND):
         result = score_vacancy(vacancy)
-        _, call_kwargs = mock_llm.call_args
-        assert call_kwargs.get("enrich") is False or mock_llm.call_args[1].get("enrich") is False or True
 
+    # access=remote_global+visa(+1)=6, brand Tier1=+4, salary=+1, senior=+1, research_maturity=+1
+    # raw=13, clamp → 10 → S
     assert result.tier == "S"
-    assert result.score == 9
-    assert result.enrichment_used is False
-    assert result.post_enrichment is None
+    assert result.score == 10
+    assert result.score_breakdown.get("remote_global+visa") == 6
+    assert result.score_breakdown.get("brand_Tier 1") == 4
 
 
 def test_score_vacancy_enrichment_mode():
@@ -276,7 +279,8 @@ def test_score_vacancy_enrichment_mode():
             "seniority_label": "Senior",
         },
     }
-    with patch("scoring.call_llm", return_value=llm_response_with_enrich):
+    with patch("scoring.call_llm", return_value=llm_response_with_enrich), \
+         patch("scoring.call_brand_scorer", return_value=_TIER1_BRAND):
         result = score_vacancy(vacancy)
 
     assert result.enrichment_used is True
@@ -293,8 +297,10 @@ _FAKE_ENV = {"OPENROUTER_API_KEY": "sk-or-test"}
 
 
 def test_llm_fallback_on_first_model_error():
+    import scoring.llm_scorer as llm_scorer_mod
     from scoring.llm_scorer import call_with_fallback, MODELS
 
+    llm_scorer_mod._client = None  # сброс кеша module-level клиента
     call_count = 0
 
     def fake_create(**kwargs):
@@ -321,8 +327,10 @@ def test_llm_fallback_on_first_model_error():
 
 
 def test_llm_all_models_fail_raises():
+    import scoring.llm_scorer as llm_scorer_mod
     from scoring.llm_scorer import call_with_fallback
 
+    llm_scorer_mod._client = None  # сброс кеша module-level клиента
     with patch.dict("os.environ", _FAKE_ENV), \
          patch("scoring.llm_scorer.OpenAI") as MockOpenAI:
         instance = MagicMock()
@@ -340,36 +348,27 @@ def test_llm_all_models_fail_raises():
 def test_validator_handles_none():
     result = validate_llm_output(None, "some text", enrichment_used=False)
     assert result["visa_sponsorship"] == "unclear"
-    assert result["score"] == 0
     assert result["reason"] == ""
 
 
 def test_validator_handles_incomplete_json():
     """JSON без обязательных полей — все заполняются дефолтами."""
-    result = validate_llm_output({"score": 7}, "some text", enrichment_used=False)
-    assert result["score"] == 7
+    result = validate_llm_output({}, "some text", enrichment_used=False)
     assert result["visa_sponsorship"] == "unclear"
     assert result["relocation_support"] == "unclear"
     assert result["remote_policy"] == "unclear"
     assert result["experience_level"] == "unclear"
+    assert result["exceptional_salary"] is False
+    assert result["research_maturity"] is False
+    assert result["vague_jd"] is False
 
 
 def test_validator_handles_wrong_field_names():
     """Неправильные имена полей — все заменяются дефолтами."""
-    raw = {"sponsorship": "yes", "reloc": "yes", "remot": "global", "scor": 8}
+    raw = {"sponsorship": "yes", "reloc": "yes", "remot": "global"}
     result = validate_llm_output(raw, "some text", enrichment_used=False)
     assert result["visa_sponsorship"] == "unclear"
     assert result["relocation_support"] == "unclear"
-    assert result["score"] == 0
-
-
-def test_validator_clamps_score_out_of_range():
-    raw = {"score": 999, "visa_sponsorship": "unclear", "relocation_support": "unclear",
-           "remote_policy": "unclear", "verbatim_evidence": {}}
-    assert validate_llm_output(raw, "", False)["score"] == 10
-
-    raw2 = {**raw, "score": -100}
-    assert validate_llm_output(raw2, "", False)["score"] == 0
 
 
 def test_validator_normalizes_invalid_enum_values():
@@ -379,7 +378,6 @@ def test_validator_normalizes_invalid_enum_values():
         "relocation_support": "possibly",
         "remote_policy": "remote",      # не входит в допустимые
         "experience_level": "expert",   # не входит в допустимые
-        "score": 5,
     }
     result = validate_llm_output(raw, "", enrichment_used=False)
     assert result["visa_sponsorship"] == "unclear"
@@ -430,7 +428,8 @@ def _score_vacancy_with_mock_content(content: str) -> "ScoringResult | None":
         "location": "Remote",
     }
     with patch.dict("os.environ", _FAKE_ENV), \
-         patch("scoring.llm_scorer.OpenAI") as MockOpenAI:
+         patch("scoring.llm_scorer.OpenAI") as MockOpenAI, \
+         patch("scoring.call_brand_scorer", return_value=_TIER1_BRAND):
         instance = MagicMock()
         instance.chat.completions.create.return_value = _mock_llm_response(content)
         MockOpenAI.return_value = instance
