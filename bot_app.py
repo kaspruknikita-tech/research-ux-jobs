@@ -130,7 +130,11 @@ def main() -> None:
         handle_edit_reply,
     ))
     logger.info("Бот запущен, слушаем кнопки модерации...")
-    app.run_polling(allowed_updates=["callback_query", "message"], drop_pending_updates=True)
+    app.run_polling(
+        allowed_updates=["callback_query", "message"],
+        drop_pending_updates=True,
+        bootstrap_retries=5,
+    )
 
 
 if __name__ == "__main__":

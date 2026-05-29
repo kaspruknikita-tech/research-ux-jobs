@@ -17,6 +17,7 @@ from scoring.models import PostEnrichment, ScoringResult
 logger = logging.getLogger(__name__)
 
 _SEND_DELAY = 3.5
+_TG_TEXT_LIMIT = 4096
 _TIER_ICONS = {"S": "⭐", "A": "🔵", "B": "🟡", "C": "🔴"}
 _VERBATIM_LABELS = {
     "visa_sponsorship": "Виза",
@@ -45,6 +46,38 @@ def _format(vacancy: dict, result: ScoringResult | None = None) -> str:
     if vacancy.get("channel") == "ru":
         return format_ru(vacancy, enrichment=enrichment)
     return format_global(vacancy, enrichment=enrichment)
+
+
+def _truncate_for_telegram(text: str, footer: str, limit: int = _TG_TEXT_LIMIT) -> str:
+    """Урезает text+footer под лимит Telegram. Сохраняет ссылку 'Откликнуться' и футер."""
+    if len(text) + len(footer) <= limit:
+        return text + footer
+
+    lines = text.split("\n")
+    if lines and "<a href=" in lines[-1]:
+        link_line = lines[-1]
+        body = "\n".join(lines[:-1])
+        tail = "\n\n…\n\n" + link_line + footer
+    else:
+        body = text
+        tail = "\n\n…" + footer
+
+    available = limit - len(tail)
+    if available < 200:
+        return (text + footer)[: limit - 1] + "…"
+
+    truncated = body[:available]
+    cut = truncated.rfind("\n\n")
+    if cut > 200:
+        truncated = truncated[:cut]
+
+    for tag in ("b", "i"):
+        opens = truncated.count(f"<{tag}>")
+        closes = truncated.count(f"</{tag}>")
+        if opens > closes:
+            truncated += f"</{tag}>" * (opens - closes)
+
+    return truncated + tail
 
 
 def _scoring_footer(result: ScoringResult) -> str:
@@ -186,8 +219,8 @@ def send_to_moderation(vacancy: dict, scoring_result: ScoringResult | None = Non
             scoring_result = _get_or_score(vacancy)
 
         text = _format(vacancy, scoring_result)
-        if scoring_result is not None:
-            text += _scoring_footer(scoring_result)
+        footer = _scoring_footer(scoring_result) if scoring_result is not None else ""
+        text = _truncate_for_telegram(text, footer)
 
         mod_chat = _get_moderation_chat(vacancy.get("channel", ""))
         resp = _api(
