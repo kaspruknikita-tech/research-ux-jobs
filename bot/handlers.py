@@ -21,6 +21,20 @@ logger = logging.getLogger(__name__)
 _EDIT_PROMPT_PREFIX = "✏️ Вакансия #"
 
 
+def _is_authorized_chat(message) -> bool:
+    """Принимает чат как численный id, так и @username — env может содержать любой формат."""
+    chat = message.chat
+    candidates = {str(chat.id)}
+    if chat.username:
+        candidates.add(f"@{chat.username}")
+        candidates.add(chat.username)
+    allowed = {
+        c for c in (config.TELEGRAM_MODERATION_CHAT_RU, config.TELEGRAM_MODERATION_CHAT_GLOBAL)
+        if c
+    }
+    return bool(candidates & allowed)
+
+
 def _get_channel_id(channel: str) -> str:
     return config.TELEGRAM_CHANNEL_RU if channel == "ru" else config.TELEGRAM_CHANNEL_GLOBAL
 
@@ -33,9 +47,8 @@ async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     """Обрабатывает нажатия кнопок модерации."""
     query = update.callback_query
 
-    # Только из авторизованных чатов модерации
-    allowed_chats = {config.TELEGRAM_MODERATION_CHAT_RU, config.TELEGRAM_MODERATION_CHAT_GLOBAL}
-    if str(query.message.chat_id) not in allowed_chats:
+    # Только из авторизованных чатов модерации (id или @username)
+    if not _is_authorized_chat(query.message):
         try:
             await query.answer("Unauthorized", show_alert=True)
         except Exception:

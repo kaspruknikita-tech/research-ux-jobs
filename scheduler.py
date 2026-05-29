@@ -116,8 +116,10 @@ def run_cycle() -> dict:
             if not apply_filters(v):
                 total_filtered += 1
                 v["status"] = "rejected"
-                database.insert_vacancy(v)
-                rejected_vacancies.append(v)
+                # Экспортируем в Rejected только если реально записали в БД.
+                # Дубликат вернёт None — его уже экспортировали в прошлом цикле.
+                if database.insert_vacancy(v):
+                    rejected_vacancies.append(v)
                 continue
 
             if v.get("source") == "adzuna":

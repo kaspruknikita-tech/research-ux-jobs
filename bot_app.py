@@ -12,7 +12,7 @@
 """
 
 import logging
-import os
+import sys
 from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -97,8 +97,9 @@ def main() -> None:
     async def on_error(update, context) -> None:
         if isinstance(context.error, Conflict):
             logger.error("Конфликт: запущен другой экземпляр бота. Завершаем процесс.")
-            scheduler.shutdown(wait=False)
-            os._exit(1)
+            scheduler.shutdown(wait=True)
+            logging.shutdown()
+            sys.exit(1)
         logger.exception("Необработанная ошибка бота", exc_info=context.error)
 
     # Telegram-бот стартует сразу — не ждёт окончания первого цикла

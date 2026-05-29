@@ -68,7 +68,7 @@ def _first_sentence(text: str, max_len: int = 200) -> str:
     return cut
 
 
-_ICON_RE = __import__("re").compile(r"\s*_[a-z][a-z_]*_\s*")
+_ICON_RE = re.compile(r"\s*_[a-z][a-z_]*_\s*")
 
 
 def _clean(text: str) -> str:

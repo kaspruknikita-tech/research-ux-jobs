@@ -142,8 +142,9 @@ def save_vacancy_score(result, prompt_version: str) -> None:
                     base_args + (enrichment_json, brand_json),
                 )
             conn.commit()
-        except Exception:
-            # Колонки post_enrichment/brand_data ещё не добавлены
+        except psycopg2.errors.UndefinedColumn:
+            # Колонки post_enrichment/brand_data ещё не добавлены — fallback без них.
+            # Другие ошибки (сериализация, FK, сеть) пробрасываем, чтобы не терять данные молча.
             conn.rollback()
             with conn.cursor() as cur:
                 cur.execute(

@@ -7,11 +7,10 @@ import re
 import time
 import logging
 
-import requests
-
 import config
 import database
 from bot.templates import format_ru, format_global
+from bot.tg_api import call as tg_call
 from scoring import score_vacancy, PROMPT_VERSION
 from scoring.models import PostEnrichment, ScoringResult
 
@@ -20,10 +19,12 @@ logger = logging.getLogger(__name__)
 _SEND_DELAY = 3.5
 _TG_TEXT_LIMIT = 4096
 _TAG_STRIP_RE = re.compile(r"<[^>]+>")
+# Открывающие и закрывающие теги — оба паттерна case-insensitive,
+# чтобы <B>...</B> и <b>...</b> считались согласованно.
 _TAG_PAIRS = (
-    (re.compile(r"<b\b[^>]*>"), "</b>"),
-    (re.compile(r"<i\b[^>]*>"), "</i>"),
-    (re.compile(r"<a\b[^>]*>"), "</a>"),
+    (re.compile(r"<b\b[^>]*>", re.IGNORECASE), re.compile(r"</b>", re.IGNORECASE), "</b>"),
+    (re.compile(r"<i\b[^>]*>", re.IGNORECASE), re.compile(r"</i>", re.IGNORECASE), "</i>"),
+    (re.compile(r"<a\b[^>]*>", re.IGNORECASE), re.compile(r"</a>", re.IGNORECASE), "</a>"),
 )
 _TIER_ICONS = {"S": "⭐", "A": "🔵", "B": "🟡", "C": "🔴"}
 _VERBATIM_LABELS = {
@@ -31,15 +32,6 @@ _VERBATIM_LABELS = {
     "relocation_support": "Релокация",
     "remote_policy": "Удалёнка",
 }
-
-
-def _api(method: str, **kwargs) -> dict:
-    url = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/{method}"
-    resp = requests.post(url, json=kwargs, timeout=10)
-    data = resp.json()
-    if not data.get("ok"):
-        raise RuntimeError(f"Telegram API error [{method}]: {data.get('description')}")
-    return data
 
 
 def _get_enrichment(result: ScoringResult | None) -> dict | None:
@@ -72,9 +64,9 @@ def _tg_truncate(s: str, max_units: int) -> str:
 
 
 def _balance_html_tags(s: str) -> str:
-    for pattern, close_tag in _TAG_PAIRS:
-        opens = len(pattern.findall(s))
-        closes = s.count(close_tag)
+    for open_re, close_re, close_tag in _TAG_PAIRS:
+        opens = len(open_re.findall(s))
+        closes = len(close_re.findall(s))
         if opens > closes:
             s += close_tag * (opens - closes)
     return s
@@ -240,7 +232,7 @@ def send_to_moderation(vacancy: dict, scoring_result: ScoringResult | None = Non
         text = _truncate_for_telegram(text, footer)
 
         mod_chat = _get_moderation_chat(vacancy.get("channel", ""))
-        resp = _api(
+        resp = tg_call(
             "sendMessage",
             chat_id=mod_chat,
             text=text,
@@ -285,7 +277,7 @@ def publish_due_scheduled() -> int:
         try:
             scoring_result = _get_or_score(v)
             text = _format(v, scoring_result)
-            _api(
+            tg_call(
                 "sendMessage",
                 chat_id=channel_id,
                 text=text,

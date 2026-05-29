@@ -19,12 +19,14 @@ class ScoringInput(BaseModel):
 
 
 class PostEnrichment(BaseModel):
-    summary: str
+    # Все поля с дефолтами — LLM (особенно мелкие модели) часть полей опускает.
+    # Лучше частичное обогащение, чем ValidationError и потеря всего скоринга.
+    summary: str = ""
     key_tasks: list[str] = []
-    key_requirements: list[str]
-    key_benefits: list[str]
-    formatted_salary: str | None
-    seniority_label: str
+    key_requirements: list[str] = []
+    key_benefits: list[str] = []
+    formatted_salary: str | None = None
+    seniority_label: str = "Not specified"
 
 
 class ScoringResult(BaseModel):

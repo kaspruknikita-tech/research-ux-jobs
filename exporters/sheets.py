@@ -50,10 +50,20 @@ def _get_sheet(name: str = None):
     return sheet
 
 
-def _ensure_headers(sheet):
+def _ensure_headers(sheet) -> dict[str, int]:
+    """Возвращает карту header_name → 1-based column index.
+    Если лист пустой — записывает HEADERS. Если шапка отличается — НЕ сдвигает данные,
+    а возвращает реальную карту, чтобы _export читал URL из правильной колонки."""
     first_row = sheet.row_values(1)
-    if first_row != HEADERS:
-        sheet.insert_row(HEADERS, index=1)
+    if not first_row:
+        sheet.append_row(HEADERS)
+        first_row = HEADERS
+    elif first_row != HEADERS:
+        logger.warning(
+            "[sheets] Шапка отличается от HEADERS (%d vs %d колонок). Не сдвигаю данные.",
+            len(first_row), len(HEADERS),
+        )
+    return {name: i + 1 for i, name in enumerate(first_row)}
 
 
 def _to_row(v: dict) -> list:
@@ -88,9 +98,11 @@ def _export(vacancies: list[dict], sheet_name: str) -> None:
 
     try:
         sheet = _get_sheet(sheet_name)
-        _ensure_headers(sheet)
+        header_map = _ensure_headers(sheet)
 
-        existing_urls = set(sheet.col_values(12))
+        # URL читаем из реальной колонки шапки, не из захардкоженного индекса.
+        url_col = header_map.get("Ссылка")
+        existing_urls = set(sheet.col_values(url_col)) if url_col else set()
 
         new_rows = []
         for v in vacancies:
