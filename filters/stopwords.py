@@ -7,6 +7,7 @@
 """
 
 import logging
+import re
 
 from langdetect import detect, LangDetectException
 
@@ -24,6 +25,13 @@ WHITELIST = [
     "usability",
     "юзабилити",
 ]
+
+# Граница слова ПЕРЕД токеном: 'ux' матчит 'ux researcher'/'ux/ui', но не 'luxury'/'benelux'.
+# Суффикс разрешён: 'research' матчит 'researcher'/'researching'.
+_WHITELIST_RE = re.compile(
+    r"\b(?:" + "|".join(re.escape(w) for w in WHITELIST) + r")",
+    re.IGNORECASE,
+)
 
 BLACKLIST = [
     # Дизайнеры (не исследователи)
@@ -109,11 +117,8 @@ def apply_filters(vacancy: dict) -> bool:
             logger.debug("Чёрный список '%s': %s", phrase, vacancy.get("title"))
             return False
 
-    # 2. Белый список — должно быть хотя бы одно слово
-    for word in WHITELIST:
-        if word.lower() in title:
-            break
-    else:
+    # 2. Белый список — должно быть хотя бы одно слово (по границе слова)
+    if not _WHITELIST_RE.search(title):
         logger.debug("Не прошёл белый список: %s", vacancy.get("title"))
         return False
 

@@ -47,6 +47,8 @@ TG_DAYS_BACK: int = int(os.getenv("TG_DAYS_BACK", "7"))
 # --- Hirify ---
 HIRIFY_EMAIL: str = os.getenv("HIRIFY_EMAIL", "")
 HIRIFY_PASSWORD: str = os.getenv("HIRIFY_PASSWORD", "")
+# JSON-список cookies от playwright (gen_hirify_cookies.py) — для аккаунтов через Google OAuth.
+HIRIFY_COOKIES: str = os.getenv("HIRIFY_COOKIES", "")
 
 # --- OpenRouter ---
 OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")

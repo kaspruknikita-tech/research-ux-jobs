@@ -15,11 +15,37 @@ _LOCAL_SOURCES = {"hh.ru"}
 _COMPLETENESS_THRESHOLD = 1.0
 
 
+def _clean_company(company: str | None) -> str:
+    """Отсекает hirify-плейсхолдер ('%hirify_global%') и любую утечку 'hirify',
+    чтобы brand scorer не ресёрчил саму площадку вместо реального работодателя."""
+    c = (company or "").strip()
+    if not c or "hirify" in c.lower():
+        return ""
+    return c
+
+
+def _neutral_brand() -> dict:
+    """Бренд неизвестен (компания не определена) — без вызова Perplexity, нулевой boost."""
+    return {
+        "brand_tag": "Неизвестный",
+        "brand_boost": 0,
+        "about_company": "",
+        "industry": "",
+        "scale": "",
+        "green_flags": [],
+        "red_flags": [],
+        "role_fact_check": "",
+        "verdict": "",
+        "model_used": "",
+        "latency_ms": 0,
+    }
+
+
 def _make_inp(vacancy: dict, vacancy_id: int) -> ScoringInput:
     return ScoringInput(
         vacancy_id=vacancy_id,
         title=vacancy.get("title", ""),
-        company=vacancy.get("company", ""),
+        company=_clean_company(vacancy.get("company")),
         description=vacancy.get("description", ""),
         location=vacancy.get("location"),
         work_format=vacancy.get("work_format"),
@@ -121,7 +147,13 @@ def score_vacancy(vacancy: dict) -> ScoringResult:
                  vacancy_id, validated.get("score"), validated.get("visa_sponsorship"),
                  validated.get("relocation_support"), validated.get("remote_policy"))
 
-    brand_data = call_brand_scorer(inp)
+    # Бренд скорим только если компания реально определена. Иначе Perplexity
+    # домысливает работодателя из обрывков (раньше так попадал 'hirify.global').
+    if inp.company:
+        brand_data = call_brand_scorer(inp)
+    else:
+        logger.info("BRAND: компания не определена (vacancy_id=%d) — пропуск brand scorer", vacancy_id)
+        brand_data = _neutral_brand()
     brand_boost = brand_data.get("brand_boost", 0)
     effective_score = max(0, min(10, validated["score"] + brand_boost))
     logger.info("BRAND BOOST: vacancy_id=%d base_score=%d boost=%d effective=%d tag=%s",

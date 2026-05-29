@@ -91,9 +91,11 @@ async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         logger.info("Отклонена вакансия id=%s (%s)", vacancy_id, actor)
 
     elif action == "edit":
+        # selective=True не сработает: ForceReply таргетирует автора reply_to_message,
+        # а это сам бот. Без selective клавиатура ответа открывается у всех в чате.
         await query.message.reply_text(
             f"{_EDIT_PROMPT_PREFIX}{vacancy_id} — пришли новое описание:",
-            reply_markup=ForceReply(selective=True),
+            reply_markup=ForceReply(),
         )
 
     elif action == "schedule":
@@ -123,11 +125,14 @@ async def handle_edit_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     if not prompt_text.startswith(_EDIT_PROMPT_PREFIX):
         return
 
+    logger.info("handle_edit_reply сработал: chat=%s user=%s", msg.chat_id, msg.from_user.id if msg.from_user else None)
+
     try:
         # Извлекаем vacancy_id из текста "✏️ Вакансия #123 — пришли новое описание:"
         id_part = prompt_text[len(_EDIT_PROMPT_PREFIX):].split(" ")[0]
         vacancy_id = int(id_part)
     except (ValueError, IndexError):
+        logger.warning("Не удалось распарсить vacancy_id из prompt: %r", prompt_text[:100])
         return
 
     new_description = msg.text or ""
@@ -135,26 +140,37 @@ async def handle_edit_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await msg.reply_text("Слишком короткое описание, попробуй ещё раз.")
         return
 
-    database.update_vacancy_description(vacancy_id, new_description)
+    try:
+        database.update_vacancy_description(vacancy_id, new_description)
+    except Exception:
+        logger.exception("Ошибка обновления описания вакансии id=%s в БД", vacancy_id)
+        await msg.reply_text(f"❌ Не удалось сохранить описание #{vacancy_id}. Смотри логи.")
+        return
 
-    # Перерисовываем оригинальное сообщение в чате модерации
+    # Перерисовываем оригинальное сообщение в чате модерации; если карточки нет — шлём новую.
     vacancy = database.get_vacancy_by_id(vacancy_id)
-    mod_msg_id = (vacancy or {}).get("moderation_message_id")
-    if not mod_msg_id:
-        logger.warning("moderation_message_id отсутствует для вакансии id=%s, перерисовка невозможна", vacancy_id)
-    if vacancy and mod_msg_id:
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        from bot.moderator import _format, _get_moderation_chat, _get_or_score, _keyboard, _scoring_footer
-        scoring_result = _get_or_score(vacancy)
-        new_text = _format(vacancy, scoring_result)
-        if scoring_result:
-            new_text += _scoring_footer(scoring_result)
-        mod_chat = _get_moderation_chat(vacancy.get("channel", ""))
-        kbd_dict = _keyboard(vacancy_id, vacancy["channel"])
-        markup = InlineKeyboardMarkup([
-            [InlineKeyboardButton(btn["text"], callback_data=btn["callback_data"]) for btn in row]
-            for row in kbd_dict["inline_keyboard"]
-        ])
+    if not vacancy:
+        await msg.reply_text(f"✅ Описание #{vacancy_id} сохранено, но вакансия не найдена для перерисовки.")
+        return
+
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    from bot.moderator import _format, _get_moderation_chat, _get_or_score, _keyboard, _scoring_footer
+
+    scoring_result = _get_or_score(vacancy)
+    new_text = _format(vacancy, scoring_result)
+    if scoring_result:
+        new_text += _scoring_footer(scoring_result)
+    mod_chat = _get_moderation_chat(vacancy.get("channel", ""))
+    kbd_dict = _keyboard(vacancy_id, vacancy["channel"])
+    markup = InlineKeyboardMarkup([
+        [InlineKeyboardButton(btn["text"], callback_data=btn["callback_data"]) for btn in row]
+        for row in kbd_dict["inline_keyboard"]
+    ])
+
+    mod_msg_id = vacancy.get("moderation_message_id")
+    redraw_failed = False
+
+    if mod_msg_id:
         logger.info("edit_message_text: chat=%s msg_id=%s text_len=%s", mod_chat, mod_msg_id, len(new_text))
         try:
             await context.bot.edit_message_text(
@@ -166,8 +182,31 @@ async def handle_edit_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 disable_web_page_preview=True,
             )
             logger.info("edit_message_text OK для вакансии id=%s", vacancy_id)
+        except Exception as e:
+            logger.warning("Не удалось обновить сообщение модерации id=%s: %s", vacancy_id, e, exc_info=True)
+            redraw_failed = True
+    else:
+        logger.warning("moderation_message_id отсутствует для вакансии id=%s, шлём новую карточку", vacancy_id)
+        redraw_failed = True
+
+    if redraw_failed:
+        # Шлём новую карточку — модератор должен видеть результат.
+        try:
+            sent = await context.bot.send_message(
+                chat_id=mod_chat,
+                text=new_text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=markup,
+                disable_web_page_preview=True,
+            )
+            try:
+                database.save_moderation_message_id(vacancy_id, sent.message_id)
+            except Exception:
+                logger.warning("save_moderation_message_id не сработал для id=%s", vacancy_id, exc_info=True)
         except Exception:
-            logger.warning("Не удалось обновить сообщение модерации для вакансии id=%s", vacancy_id, exc_info=True)
+            logger.exception("Не удалось отправить обновлённую карточку id=%s", vacancy_id)
+            await msg.reply_text(f"⚠️ Описание #{vacancy_id} сохранено в БД, но карточка не обновилась. Смотри логи.")
+            return
 
     await msg.reply_text(f"✅ Описание вакансии #{vacancy_id} обновлено.")
     logger.info("Обновлено описание вакансии id=%s", vacancy_id)
