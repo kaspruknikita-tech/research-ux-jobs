@@ -19,9 +19,12 @@ from parsers.telegram import TelegramChannelParser
 from parsers.arbeitnow import ArbeitnowParser
 from parsers.himalayas import HimalayasParser
 from parsers.remotive import RemotiveParser
+from parsers.remoteok import RemoteOKParser
 from parsers.weworkremotely import WeWorkRemotelyParser
 from parsers.workingnomads import WorkingNomadsParser
 from parsers.greenhouse import GreenhouseParser
+from parsers.ashby import AshbyParser
+from parsers.lever import LeverParser
 from parsers.wantapply import WantapplyParser
 from parsers.hirify import HirifyParser
 from filters.stopwords import apply_filters
@@ -42,9 +45,12 @@ ACTIVE_PARSERS = [
     ArbeitnowParser(),
     HimalayasParser(),
     RemotiveParser(),
+    RemoteOKParser(),
     WeWorkRemotelyParser(),
     WorkingNomadsParser(),
     GreenhouseParser(),
+    AshbyParser(),
+    LeverParser(),
     WantapplyParser(),
     HirifyParser(),
 ]

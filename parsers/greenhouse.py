@@ -33,6 +33,22 @@ COMPANIES = [
     "gongio",               # Gong
     "tripactions",          # Navan
     "dept", "wpp", "accenturefederalservices",
+    # Найдено через google site:boards.greenhouse.io (2026-05)
+    "anthropic", "smartsheet", "esri", "monzo", "mozilla", "upstart",
+    "adyen", "affirm", "apolloio", "celonis", "databento", "humaninterest",
+    "huntress", "ideo", "inmobi", "leagueinc", "metalab", "myfitnesspal",
+    "okx", "omadahealth", "penninteractive", "postman", "samsungresearchamerica",
+    "similarweb", "skylighthq", "triparc", "typeform", "via", "workato",
+    "globalizationpartners", "creditkarma", "civicactions", "refhs",
+    "ideoorg",
+    # Расширенный гугл + TheirStack топ-10 (2026-05)
+    "mintel", "harrys", "nubank", "olipop", "simplisafe",
+    "greenthumbindustries", "tegnainc", "calendly", "deepmind",
+    "ezcaterinc", "yipitdata", "opentable", "opswat",
+    "worldquant", "aquaticcapitalmanagement", "wehrtyou", "vaticlabs",
+    "imc", "radixexperienced", "chathamfinancial",
+    "canonical", "spacex", "andurilindustries", "assetliving", "agoda",
+    "cloudflare", "ouihelp", "sohohouseco",
 ]
 
 WHITELIST = [
