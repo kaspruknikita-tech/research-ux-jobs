@@ -27,6 +27,7 @@ from parsers.ashby import AshbyParser
 from parsers.lever import LeverParser
 from parsers.wantapply import WantapplyParser
 from parsers.hirify import HirifyParser
+from parsers.designproject import DesignprojectParser
 from filters.stopwords import apply_filters
 from filters.dedup import is_duplicate
 from exporters.sheets import export_to_sheets, export_rejected_to_sheets
@@ -53,6 +54,7 @@ ACTIVE_PARSERS = [
     LeverParser(),
     WantapplyParser(),
     HirifyParser(),
+    DesignprojectParser(),
 ]
 
 
