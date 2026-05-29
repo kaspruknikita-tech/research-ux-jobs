@@ -29,6 +29,7 @@ from parsers.wantapply import WantapplyParser
 from parsers.hirify import HirifyParser
 from parsers.designproject import DesignprojectParser
 from parsers.userinterviews import UserInterviewsParser
+from parsers.bebee import BebeeParser
 from filters.stopwords import apply_filters
 from filters.dedup import is_duplicate
 from exporters.sheets import export_to_sheets, export_rejected_to_sheets
@@ -57,6 +58,7 @@ ACTIVE_PARSERS = [
     HirifyParser(),
     DesignprojectParser(),
     UserInterviewsParser(),
+    BebeeParser(),
 ]
 
 
