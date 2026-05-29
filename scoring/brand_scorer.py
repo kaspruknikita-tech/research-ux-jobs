@@ -12,7 +12,21 @@ from .models import ScoringInput
 logger = logging.getLogger(__name__)
 
 MODEL = "perplexity/sonar"
-MAX_TOKENS = 1500
+MAX_TOKENS = 700
+
+
+_client: OpenAI | None = None
+
+
+def _get_client() -> OpenAI:
+    """Ленивый module-level OpenAI клиент. Один httpx-pool на процесс."""
+    global _client
+    if _client is None:
+        _client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.environ["OPENROUTER_API_KEY"],
+        )
+    return _client
 
 
 def _extract_json(raw: str) -> dict:
@@ -33,34 +47,33 @@ def _extract_json(raw: str) -> dict:
     return json.loads(candidate)
 
 _SYSTEM_PROMPT = """Ты — Market Intelligence Analyst и Lead UX/CX Researcher.
-Твоя задача — глубокий анализ вакансии и стоящего за ней IT-бренда.
-
-Целевая аудитория: продуктовые исследователи, социологи и антропологи из СНГ,
-которые ищут сильные компании для релокации или удалённой B2B-работы.
+Анализируешь вакансию и стоящий за ней IT-бренд для продуктовых исследователей,
+социологов и антропологов из СНГ, которые ищут сильные компании для релокации или удалённой B2B-работы.
 
 ОГРАНИЧЕНИЯ:
 - ИГНОРИРУЙ фразу "Sorry, this job is not available in your region" — это баг парсера, не признак отсутствия релокации.
-- Оценивая бренд — используй свою базу знаний и веб-поиск.
-- Оценивая роль — смотри только в текст вакансии.
-- Весь текст в полях на русском языке.
+- Бренд — твоя база знаний и веб-поиск. Роль — только текст вакансии.
+- Весь текст в полях на русском языке. Без markdown, без эмодзи, без воды.
 
-НАЗНАЧЬ brand_boost — влияние бренда на итоговый тир вакансии:
-  2  — Tier 1: FAANG, глобально известные продуктовые компании (Google, Spotify, Notion, Figma...)
+ВНУТРЕННЕ ОЦЕНИ (в summary НЕ перечисляй рубрики, а сплавь в связный текст):
+  1. Бренд и престиж — узнаваемость, инновационность, вес строчки в резюме.
+  2. Зрелость роли по JD — стратегические инсайты vs базовое юзабилити; упоминание качественных/количественных методов, социологии, JTBD.
+  3. Устойчивость и рынок — финансовая стабильность, отсутствие недавних массовых сокращений.
+  4. Культура — тональность JD (живой язык vs булшит), известные отзывы о WLB.
+
+brand_boost — влияние бренда на итоговый тир:
+  2  — Tier 1: FAANG, глобально известные продуктовые (Google, Spotify, Notion, Figma...)
   1  — Tier 2: известные в IT (mid-size SaaS, B2B-платформы, growing scale-ups)
-  0  — Нишевый: известны в конкретной вертикали, небольшой масштаб
- -1  — Неизвестный: нет значимого веб-присутствия, или есть серьёзные красные флаги (массовые сокращения, скандалы)
+  0  — Нишевый: известны в вертикали, небольшой масштаб
+ -1  — Неизвестный или серьёзные красные флаги (массовые сокращения, скандалы)
 
 СТРОГО JSON, без markdown, без текста вне JSON:
 {
   "brand_tag": "Tier 1 | Tier 2 | Нишевый | Неизвестный",
   "brand_boost": <integer: -1, 0, 1 or 2>,
-  "about_company": "<1-2 предложения — чем занимается, ключевые продукты, позиция на рынке>",
-  "industry": "<например: Enterprise SaaS, Legal Tech, FinTech>",
-  "scale": "<например: 5000 сотрудников, публичная компания, Series C>",
-  "green_flags": ["<конкретный факт>", "<конкретный факт>"],
-  "red_flags": ["<конкретный факт>" или "Не обнаружено"],
-  "role_fact_check": "<точная короткая цитата из текста вакансии про задачи роли, до 20 слов>",
-  "verdict": "<2-3 предложения — насколько крутая вакансия и стоит ли тратить на неё время>"
+  "industry": "<коротко: Enterprise SaaS, Legal Tech, FinTech>",
+  "scale": "<коротко: ~5000 чел., публичная | Series C>",
+  "summary": "<РОВНО 2-3 предложения. Сплавь: чем известны + зрелость роли + рынок/культура + краткий вердикт стоит ли откликаться. Без рубрик, без буллетов, без перечислений 'во-первых'. Конкретика вместо общих слов.>"
 }"""
 
 
@@ -75,10 +88,7 @@ def _build_user_message(inp: ScoringInput) -> str:
 def call_brand_scorer(inp: ScoringInput) -> dict:
     """Возвращает dict с brand_boost и качественным анализом бренда.
     При ошибке возвращает нейтральный результат (brand_boost=0) без падения пайплайна."""
-    client = OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=os.environ["OPENROUTER_API_KEY"],
-    )
+    client = _get_client()
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT},
         {"role": "user", "content": _build_user_message(inp)},
@@ -117,13 +127,9 @@ def call_brand_scorer(inp: ScoringInput) -> dict:
         return {
             "brand_tag": "Неизвестный",
             "brand_boost": 0,
-            "about_company": "",
             "industry": "",
             "scale": "",
-            "green_flags": [],
-            "red_flags": [],
-            "role_fact_check": "",
-            "verdict": "",
+            "summary": "",
             "model_used": MODEL,
             "latency_ms": latency_ms,
             "error": str(exc),

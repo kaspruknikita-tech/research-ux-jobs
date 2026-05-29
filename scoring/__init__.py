@@ -29,13 +29,9 @@ def _neutral_brand() -> dict:
     return {
         "brand_tag": "Неизвестный",
         "brand_boost": 0,
-        "about_company": "",
         "industry": "",
         "scale": "",
-        "green_flags": [],
-        "red_flags": [],
-        "role_fact_check": "",
-        "verdict": "",
+        "summary": "",
         "model_used": "",
         "latency_ms": 0,
     }

@@ -140,22 +140,10 @@ def _scoring_footer(result: ScoringResult) -> str:
     if bd and bd.get("brand_tag") and not bd.get("error"):
         lines.append("")
         tag = bd.get("brand_tag", "")
-        industry = bd.get("industry", "")
-        scale = bd.get("scale", "")
-        meta = " · ".join(filter(None, [industry, scale]))
+        meta = " · ".join(filter(None, [bd.get("industry", ""), bd.get("scale", "")]))
         lines.append(f"🏷 {tag}" + (f" · {meta}" if meta else ""))
-        if bd.get("about_company"):
-            lines.append(bd["about_company"])
-        greens = bd.get("green_flags") or []
-        if greens:
-            lines.append("✅ " + " · ".join(greens[:2]))
-        reds = [r for r in (bd.get("red_flags") or []) if r and r != "Не обнаружено"]
-        if reds:
-            lines.append("⚠️ " + " · ".join(reds[:2]))
-        if bd.get("role_fact_check"):
-            lines.append(f"📋 Роль: «{bd['role_fact_check']}»")
-        if bd.get("verdict"):
-            lines.append(f"💡 {bd['verdict']}")
+        if bd.get("summary"):
+            lines.append(bd["summary"])
 
     return "\n\n" + "\n".join(lines)
 
