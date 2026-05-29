@@ -3,6 +3,7 @@
 Использует Telegram Bot API напрямую через requests (без asyncio).
 """
 
+import re
 import time
 import logging
 
@@ -18,6 +19,12 @@ logger = logging.getLogger(__name__)
 
 _SEND_DELAY = 3.5
 _TG_TEXT_LIMIT = 4096
+_TAG_STRIP_RE = re.compile(r"<[^>]+>")
+_TAG_PAIRS = (
+    (re.compile(r"<b\b[^>]*>"), "</b>"),
+    (re.compile(r"<i\b[^>]*>"), "</i>"),
+    (re.compile(r"<a\b[^>]*>"), "</a>"),
+)
 _TIER_ICONS = {"S": "⭐", "A": "🔵", "B": "🟡", "C": "🔴"}
 _VERBATIM_LABELS = {
     "visa_sponsorship": "Виза",
@@ -48,11 +55,37 @@ def _format(vacancy: dict, result: ScoringResult | None = None) -> str:
     return format_global(vacancy, enrichment=enrichment)
 
 
+def _tg_len(s: str) -> int:
+    """Длина в UTF-16 code units — так Telegram считает лимит 4096."""
+    return len(s.encode("utf-16-le")) // 2
+
+
+def _tg_truncate(s: str, max_units: int) -> str:
+    """Усекает строку до max_units UTF-16 code units."""
+    units = 0
+    for i, c in enumerate(s):
+        cost = 2 if ord(c) > 0xFFFF else 1
+        if units + cost > max_units:
+            return s[:i]
+        units += cost
+    return s
+
+
+def _balance_html_tags(s: str) -> str:
+    for pattern, close_tag in _TAG_PAIRS:
+        opens = len(pattern.findall(s))
+        closes = s.count(close_tag)
+        if opens > closes:
+            s += close_tag * (opens - closes)
+    return s
+
+
 def _truncate_for_telegram(text: str, footer: str, limit: int = _TG_TEXT_LIMIT) -> str:
-    """Урезает text+footer под лимит Telegram. Сохраняет ссылку 'Откликнуться' и футер."""
-    if len(text) + len(footer) <= limit:
+    """Урезает text+footer под лимит Telegram (UTF-16 units). Сохраняет ссылку 'Откликнуться' и футер."""
+    if _tg_len(text) + _tg_len(footer) <= limit:
         return text + footer
 
+    text = text.rstrip("\n")
     lines = text.split("\n")
     if lines and "<a href=" in lines[-1]:
         link_line = lines[-1]
@@ -62,21 +95,17 @@ def _truncate_for_telegram(text: str, footer: str, limit: int = _TG_TEXT_LIMIT) 
         body = text
         tail = "\n\n…" + footer
 
-    available = limit - len(tail)
+    available = limit - _tg_len(tail)
     if available < 200:
-        return (text + footer)[: limit - 1] + "…"
+        plain = _TAG_STRIP_RE.sub("", text + footer)
+        return _tg_truncate(plain, limit - 1) + "…"
 
-    truncated = body[:available]
+    truncated = _tg_truncate(body, available)
     cut = truncated.rfind("\n\n")
     if cut > 200:
         truncated = truncated[:cut]
 
-    for tag in ("b", "i"):
-        opens = truncated.count(f"<{tag}>")
-        closes = truncated.count(f"</{tag}>")
-        if opens > closes:
-            truncated += f"</{tag}>" * (opens - closes)
-
+    truncated = _balance_html_tags(truncated)
     return truncated + tail
 
 

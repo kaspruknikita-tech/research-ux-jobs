@@ -147,7 +147,6 @@ COMPANIES = [
     "stackexchange",
     "stitchfix",
     "teravision",
-    "test",
     "testio",
     "vast",
     "wikimedia",

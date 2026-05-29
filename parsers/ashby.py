@@ -90,7 +90,6 @@ COMPANIES = [
     "Replit",
     "Spruce",
     "Squad",
-    "Stickermule",
     "TestGorilla",
     "Truelogic",
     "Vercel",

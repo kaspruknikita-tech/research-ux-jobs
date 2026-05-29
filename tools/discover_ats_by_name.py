@@ -20,11 +20,16 @@ import argparse
 import ast
 import concurrent.futures
 import datetime
+import logging
 import re
 import sys
+import threading
+import time
 from pathlib import Path
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from parsers.ashby import COMPANIES as ASHBY_EXISTING
@@ -60,18 +65,27 @@ def fetch_names_remoteintech() -> list[str]:
     """remoteintech/remote-jobs — GitHub API listing src/companies/*.md.
     Имя файла = slug компании (15five.md -> 15five)."""
     try:
-        # paginate: API возвращает максимум 1000 на страницу, но для 880 файлов хватит одной
         r = requests.get(REMOTEINTECH_API, timeout=30, params={"per_page": 1000})
+        if r.status_code == 403:
+            body = r.json() if r.text else {}
+            print(f"  [remoteintech] GitHub rate-limit (403): {body.get('message', 'без auth токена 60 req/h')}")
+            return []
         r.raise_for_status()
         files = r.json()
     except Exception as e:
         print(f"  [remoteintech] ошибка: {e}")
         return []
+    if not isinstance(files, list):
+        print(f"  [remoteintech] неожиданный формат ответа: {type(files).__name__}")
+        return []
     names: list[str] = []
+    skip_prefixes = ("_", ".")
+    skip_files = {"README.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "LICENSE.md"}
     for f in files:
         n = f.get("name", "")
-        if n.endswith(".md") and n != "README.md":
-            names.append(n[:-3])
+        if not n.endswith(".md") or n in skip_files or n.startswith(skip_prefixes):
+            continue
+        names.append(n[:-3])
     return names
 
 
@@ -86,8 +100,11 @@ def fetch_names_csv() -> list[str]:
     except Exception as e:
         print(f"  [csv] ошибка: {e}")
         return []
-    names: list[str] = []
     reader = csv_mod.DictReader(io.StringIO(text))
+    if reader.fieldnames is None or "Company Name" not in reader.fieldnames:
+        print(f"  [csv] колонка 'Company Name' не найдена. Доступные: {reader.fieldnames}")
+        return []
+    names: list[str] = []
     for row in reader:
         n = (row.get("Company Name") or "").strip().strip('"')
         if n:
@@ -103,13 +120,20 @@ SOURCES = [
 
 
 def fetch_names() -> list[str]:
-    """Собирает имена из всех SOURCES, дедупит без потери порядка."""
+    """Собирает имена из всех SOURCES, дедупит без потери порядка.
+    Падает с RuntimeError если ВСЕ источники вернули пусто — silent failure скрыл бы это."""
     all_names: list[str] = []
+    source_counts: dict[str, int] = {}
     for label, fn in SOURCES:
         got = fn()
+        source_counts[label] = len(got)
         print(f"  [{label}] {len(got)} имён")
         all_names.extend(got)
-    # дедуп без учёта регистра
+    if not all_names:
+        raise RuntimeError(
+            f"Все источники имён пусты: {source_counts}. "
+            "Проверь интернет/rate-limit GitHub API."
+        )
     seen: set[str] = set()
     uniq: list[str] = []
     for n in all_names:
@@ -186,28 +210,45 @@ def candidates(name: str) -> list[str]:
     return uniq
 
 
-def check_ashby(t: str) -> bool:
+_RATE_LOCKS = {
+    "ashby": threading.Lock(),
+    "greenhouse": threading.Lock(),
+    "lever": threading.Lock(),
+}
+_LAST_CALL: dict[str, float] = {"ashby": 0.0, "greenhouse": 0.0, "lever": 0.0}
+_MIN_INTERVAL = 0.15  # sec между запросами к одному ATS — троттлинг
+
+
+def _throttle(ats: str) -> None:
+    with _RATE_LOCKS[ats]:
+        delta = time.time() - _LAST_CALL[ats]
+        if delta < _MIN_INTERVAL:
+            time.sleep(_MIN_INTERVAL - delta)
+        _LAST_CALL[ats] = time.time()
+
+
+def _check(ats: str, url: str) -> bool:
+    _throttle(ats)
     try:
-        r = requests.get(f"https://api.ashbyhq.com/posting-api/job-board/{t}?includeCompensation=true", timeout=15)
-        return r.status_code == 200
+        r = requests.get(url, timeout=15)
     except Exception:
         return False
+    if r.status_code == 429:
+        print(f"  [{ats}] 429 rate-limited, увеличь _MIN_INTERVAL")
+        return False
+    return r.status_code == 200
+
+
+def check_ashby(t: str) -> bool:
+    return _check("ashby", f"https://api.ashbyhq.com/posting-api/job-board/{t}?includeCompensation=true")
 
 
 def check_gh(t: str) -> bool:
-    try:
-        r = requests.get(f"https://boards-api.greenhouse.io/v1/boards/{t}/jobs", timeout=15)
-        return r.status_code == 200
-    except Exception:
-        return False
+    return _check("greenhouse", f"https://boards-api.greenhouse.io/v1/boards/{t}/jobs")
 
 
 def check_lever(t: str) -> bool:
-    try:
-        r = requests.get(f"https://api.lever.co/v0/postings/{t}?mode=json", timeout=15)
-        return r.status_code == 200
-    except Exception:
-        return False
+    return _check("lever", f"https://api.lever.co/v0/postings/{t}?mode=json")
 
 
 def probe_name(name: str, existing: dict) -> dict:
@@ -306,6 +347,7 @@ def main():
                 print(f"  ... {done}/{len(names)} (хиты: {hits})")
 
     print()
+    failures: list[str] = []
     for ats in ("ashby", "greenhouse", "lever"):
         valid = sorted({r[ats] for r in results if r[ats]})
         print(f"=== {ats}: новых валидных {len(valid)} ===")
@@ -314,10 +356,18 @@ def main():
         if args.apply and valid:
             ok, msg = append_to_parser(ats, valid)
             print(f"  -> {'OK' if ok else 'FAIL'}: {msg}")
+            if not ok:
+                failures.append(f"{ats}: {msg}")
         print()
 
     if not args.apply:
         print("Запусти с --apply чтобы автоматически вписать токены в parsers/*.py")
+
+    if failures:
+        print(f"ОШИБКИ при --apply: {len(failures)}", file=sys.stderr)
+        for f in failures:
+            print(f"  {f}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
