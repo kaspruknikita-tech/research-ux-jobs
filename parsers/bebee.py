@@ -10,6 +10,7 @@
 import json
 import logging
 import re
+from datetime import datetime, timedelta, timezone
 
 import requests
 from bs4 import BeautifulSoup
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://bebee.com/us/jobs"
 MAX_PAGES = 10
 PAGE_TIMEOUT = 20
+MAX_AGE_DAYS = 30
 
 SEARCH_QUERIES = [
     "user research",
@@ -71,6 +73,20 @@ _HTML_TAG_RE = re.compile(r"<[^>]+>")
 def _is_relevant(title: str) -> bool:
     t = title.lower()
     return any(w in t for w in WHITELIST)
+
+
+def _is_fresh(date_posted: str, max_age_days: int = MAX_AGE_DAYS) -> bool:
+    """datePosted из JSON-LD ('YYYY-MM-DD...') не старше max_age_days.
+    Пустую/кривую дату считаем свежей — не теряем вакансию из-за отсутствия поля."""
+    if not date_posted:
+        return True
+    try:
+        posted = datetime.fromisoformat(date_posted.replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    if posted.tzinfo is None:
+        posted = posted.replace(tzinfo=timezone.utc)
+    return posted >= datetime.now(timezone.utc) - timedelta(days=max_age_days)
 
 
 def _strip_html(s: str) -> str:
@@ -187,6 +203,7 @@ def _parse_detail(html: str, slug: str) -> dict | None:
     work_format = _EMPLOYMENT_MAP.get((emp_type or "").upper())
 
     description = _strip_html(posting.get("description") or "")
+    date_posted = (posting.get("datePosted") or "").strip()
 
     return {
         "external_id": ext_id,
@@ -199,6 +216,7 @@ def _parse_detail(html: str, slug: str) -> dict | None:
         "work_format": work_format,
         "url": f"https://bebee.com/us/jobs/{slug}",
         "description": description,
+        "date_posted": date_posted,
     }
 
 
@@ -250,6 +268,7 @@ class BebeeParser(BaseParser):
         logger.info("[bebee] Уникальных slug'ов: %d", len(slugs))
 
         result: list[dict] = []
+        stale = 0
         for slug in slugs:
             url = f"{BASE_URL}/{slug}"
             try:
@@ -267,7 +286,14 @@ class BebeeParser(BaseParser):
             if not _is_relevant(vacancy["title"]):
                 continue
 
+            if not _is_fresh(vacancy.get("date_posted", "")):
+                stale += 1
+                continue
+
             result.append(vacancy)
 
-        logger.info("[bebee] Итого после whitelist: %d вакансий", len(result))
+        logger.info(
+            "[bebee] Итого после whitelist: %d вакансий (отсеяно старше %d дн: %d)",
+            len(result), MAX_AGE_DAYS, stale,
+        )
         return result
