@@ -29,6 +29,10 @@ def _access_points(visa: str, reloc: str, remote: str) -> tuple[int, str]:
         return 4, "relocation"
     if remote == "eu":
         return 3, "remote_eu"
+    if remote == "us_only":
+        # Для СНГ-аудитории "Remote US" без визы недоступно, но мягче чем on_site
+        # (можно искать визу/EAD удалённо). Полный on_site = -3, us_only = -1.
+        return -1, "us_only_no_visa"
     if remote == "hybrid":
         return 1, "hybrid"
     if remote == "on_site":

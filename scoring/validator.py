@@ -30,7 +30,7 @@ _FIELD_DEFAULTS: dict = {
     "verbatim_evidence": {},
 }
 
-_VALID_REMOTE_POLICY = {"global", "eu", "hybrid", "on_site", "unclear"}
+_VALID_REMOTE_POLICY = {"global", "eu", "us_only", "hybrid", "on_site", "unclear"}
 _VALID_SPONSORSHIP = {"yes", "implied", "no", "unclear"}
 _VALID_EXPERIENCE = {"junior", "mid", "senior", "lead", "unclear"}
 
@@ -78,6 +78,9 @@ def validate_llm_output(raw: dict | None, full_text: str, enrichment_used: bool)
 
     for field in _BOOL_FIELDS:
         raw[field] = _to_bool(raw.get(field))
+
+    if raw["salary_min"] is None and raw["salary_max"] is None:
+        raw["exceptional_salary"] = False
 
     if not isinstance(raw["reason"], str):
         raw["reason"] = str(raw["reason"]) if raw["reason"] else ""

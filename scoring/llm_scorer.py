@@ -40,16 +40,23 @@ Extract these fields from the job posting. Only assign a value if evidence is ex
 
 - visa_sponsorship: "yes" (explicitly offered), "implied" (e.g. "open worldwide", "will help with work authorization"), "no" (explicitly denied), "unclear"
 - relocation_support: "yes", "implied" (hints at relocation package), "no", "unclear"
-- remote_policy: "global" (remote, no geo restriction), "eu" (remote but EU/EMEA only), "hybrid", "on_site", "unclear"
+- remote_policy: ONE of:
+  - "global" — remote with NO geo restriction (worldwide, anywhere)
+  - "eu" — remote but EU/EMEA only
+  - "us_only" — remote but US-only ("Remote US", "Remote — United States", "must be located in the US") — NOT global
+  - "hybrid" — partial office presence required
+  - "on_site" — full-time office
+  - "unclear" — not specified
 - salary_min, salary_max: integers, null if not mentioned
 - salary_currency: 3-letter code "USD"/"EUR"/"GBP"/etc, null if not mentioned
 - experience_level: "junior" (<2y), "mid" (2–5y), "senior" (5+y), "lead", "unclear"
 
-- exceptional_salary: true ONLY if salary is clearly top-of-market for the role:
-  - junior: max >= $80k/y (or €70k, £65k, ₽9M/y)
-  - mid: max >= $130k/y (or €115k, £105k, ₽15M/y)
-  - senior/lead: max >= $180k/y (or €160k, £140k, ₽21M/y)
-  false if salary missing or below thresholds.
+- exceptional_salary: true ONLY if salary_max is clearly TOP-OF-MARKET (top 10%) for the role:
+  - junior: salary_max >= $90k/y (or €80k, £70k, ₽10M/y)
+  - mid: salary_max >= $150k/y (or €130k, £115k, ₽17M/y)
+  - senior/lead: salary_max >= $210k/y (or €180k, £160k, ₽25M/y)
+  Set false if: salary_min/salary_max are null, JD says "competitive" without numbers,
+  or salary_max is at/below threshold. US senior $130-180k is MEDIAN, not exceptional.
 
 - research_maturity: true if posting explicitly mentions mature research practice — mixed methods, research ops, JTBD, longitudinal studies, ethnography, Dovetail/Maze/dscout, quantitative + qualitative combined. false otherwise.
 
@@ -90,7 +97,7 @@ _ENRICH_RU_INSTRUCTIONS = """
 _OUTPUT_SCORE_ONLY = """{
   "visa_sponsorship": "yes|implied|no|unclear",
   "relocation_support": "yes|implied|no|unclear",
-  "remote_policy": "global|eu|hybrid|on_site|unclear",
+  "remote_policy": "global|eu|us_only|hybrid|on_site|unclear",
   "salary_min": <integer or null>,
   "salary_max": <integer or null>,
   "salary_currency": "<3-letter code or null>",
@@ -109,7 +116,7 @@ _OUTPUT_SCORE_ONLY = """{
 _OUTPUT_WITH_ENRICH = """{
   "visa_sponsorship": "yes|implied|no|unclear",
   "relocation_support": "yes|implied|no|unclear",
-  "remote_policy": "global|eu|hybrid|on_site|unclear",
+  "remote_policy": "global|eu|us_only|hybrid|on_site|unclear",
   "salary_min": <integer or null>,
   "salary_max": <integer or null>,
   "salary_currency": "<3-letter code or null>",
