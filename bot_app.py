@@ -12,7 +12,7 @@
 """
 
 import logging
-import sys
+import os
 from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -97,9 +97,13 @@ def main() -> None:
     async def on_error(update, context) -> None:
         if isinstance(context.error, Conflict):
             logger.error("Конфликт: запущен другой экземпляр бота. Завершаем процесс.")
-            scheduler.shutdown(wait=True)
+            scheduler.shutdown(wait=False)
             logging.shutdown()
-            sys.exit(1)
+            # os._exit вместо sys.exit: внутри async error-handler PTB
+            # SystemExit перехватывается event-loop'ом и процесс гаснет с кодом 0
+            # (Railway видит "Completed" и не рестартит). os._exit даёт реальный
+            # код 1 → срабатывает restartPolicyType=ON_FAILURE.
+            os._exit(1)
         logger.exception("Необработанная ошибка бота", exc_info=context.error)
 
     # Telegram-бот стартует сразу — не ждёт окончания первого цикла
