@@ -37,7 +37,7 @@ class ScoringResult(BaseModel):
     score_breakdown: dict[str, int]
     visa_sponsorship: Literal["yes", "implied", "no", "unclear"]
     relocation_support: Literal["yes", "implied", "no", "unclear"]
-    remote_policy: Literal["global", "eu", "hybrid", "on_site", "unclear"]
+    remote_policy: Literal["global", "eu", "us_only", "hybrid", "on_site", "unclear"]
     salary_min: int | None
     salary_max: int | None
     salary_currency: str | None
