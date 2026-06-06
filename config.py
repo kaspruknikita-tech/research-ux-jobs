@@ -63,6 +63,8 @@ RAILWAY_BALANCE_THRESHOLD: float = float(os.getenv("RAILWAY_BALANCE_THRESHOLD", 
 # --- Планировщик ---
 PARSE_INTERVAL_MINUTES: int = int(os.getenv("PARSE_INTERVAL_MINUTES", "30"))
 BALANCE_CHECK_INTERVAL_MINUTES: int = int(os.getenv("BALANCE_CHECK_INTERVAL_MINUTES", "60"))
+# Час (МСК), когда шлётся дневная сводка парсеров за прошедший день
+DAILY_REPORT_HOUR: int = int(os.getenv("DAILY_REPORT_HOUR", "9"))
 
 # --- База данных ---
 DATABASE_URL: str = os.getenv("DATABASE_URL", "")

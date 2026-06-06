@@ -70,6 +70,7 @@ def init_db() -> None:
     finally:
         conn.close()
     init_vacancy_scores()
+    init_parser_runs()
 
 
 def init_vacancy_scores() -> None:
@@ -104,6 +105,90 @@ def init_vacancy_scores() -> None:
             cur.execute("CREATE INDEX IF NOT EXISTS vacancy_scores_scored_at_idx ON vacancy_scores(scored_at)")
             cur.execute("ALTER TABLE vacancy_scores ADD COLUMN IF NOT EXISTS brand_data JSONB")
         conn.commit()
+    finally:
+        conn.close()
+
+
+def init_parser_runs() -> None:
+    """Создаёт таблицу parser_runs — посуточная статистика парсеров и фильтров."""
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS parser_runs (
+                    id          SERIAL PRIMARY KEY,
+                    run_at      TIMESTAMP WITH TIME ZONE NOT NULL,
+                    source      TEXT NOT NULL,
+                    parsed      INTEGER NOT NULL DEFAULT 0,
+                    duplicates  INTEGER NOT NULL DEFAULT 0,
+                    passed      INTEGER NOT NULL DEFAULT 0,
+                    rejected    INTEGER NOT NULL DEFAULT 0
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS parser_runs_run_at_idx ON parser_runs(run_at)")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def record_parser_runs(run_at: datetime, stats: dict[str, dict]) -> None:
+    """Пишет по строке на каждый источник за один цикл шедулера.
+    stats = {source: {"parsed": int, "duplicates": int, "passed": int, "rejected": int}}."""
+    if not stats:
+        return
+    rows = [
+        (run_at, source,
+         s.get("parsed", 0), s.get("duplicates", 0),
+         s.get("passed", 0), s.get("rejected", 0))
+        for source, s in stats.items()
+    ]
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur,
+                "INSERT INTO parser_runs (run_at, source, parsed, duplicates, passed, rejected) VALUES %s",
+                rows,
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_parser_stats(start: datetime, end: datetime) -> dict:
+    """Агрегат parser_runs за период [start, end).
+    Возвращает {"by_source": {src: {...}}, "totals": {...}, "cycles": int}."""
+    conn = _get_connection()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT source,
+                       SUM(parsed)     AS parsed,
+                       SUM(duplicates) AS duplicates,
+                       SUM(passed)     AS passed,
+                       SUM(rejected)   AS rejected
+                FROM parser_runs
+                WHERE run_at >= %s AND run_at < %s
+                GROUP BY source
+                ORDER BY SUM(parsed) DESC
+                """,
+                (start, end),
+            )
+            by_source = {}
+            totals = {"parsed": 0, "duplicates": 0, "passed": 0, "rejected": 0}
+            for row in cur.fetchall():
+                src = row.pop("source")
+                vals = {k: int(v or 0) for k, v in row.items()}
+                by_source[src] = vals
+                for k in totals:
+                    totals[k] += vals[k]
+            cur.execute(
+                "SELECT COUNT(DISTINCT run_at) AS cycles FROM parser_runs WHERE run_at >= %s AND run_at < %s",
+                (start, end),
+            )
+            cycles = int(cur.fetchone()["cycles"] or 0)
+        return {"by_source": by_source, "totals": totals, "cycles": cycles}
     finally:
         conn.close()
 

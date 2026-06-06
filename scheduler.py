@@ -4,7 +4,7 @@
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 import requests
 from apscheduler.schedulers.blocking import BlockingScheduler
@@ -33,7 +33,7 @@ from parsers.bebee import BebeeParser
 from filters.stopwords import apply_filters
 from filters.dedup import is_duplicate
 from exporters.sheets import export_to_sheets, export_rejected_to_sheets
-from bot.alerts import check_balances
+from bot.alerts import check_balances, daily_report
 
 logging.basicConfig(
     level=logging.INFO,
@@ -100,11 +100,13 @@ def _enrich_adzuna(v: dict) -> None:
 def run_cycle() -> dict:
     logger.info("=== Начало цикла: %s ===", datetime.now().strftime("%Y-%m-%d %H:%M"))
 
+    run_ts = datetime.now(timezone.utc)
     total_parsed = 0
     total_saved = 0
     total_filtered = 0
     saved_vacancies = []
     rejected_vacancies = []
+    stats: dict[str, dict] = {}
 
     for parser in ACTIVE_PARSERS:
         logger.info("Запускаем парсер: %s", parser.source_name)
@@ -113,8 +115,15 @@ def run_cycle() -> dict:
         total_parsed += len(vacancies)
         logger.info("Получено: %d вакансий", len(vacancies))
 
+        s = stats.setdefault(
+            parser.source_name,
+            {"parsed": 0, "duplicates": 0, "passed": 0, "rejected": 0},
+        )
+        s["parsed"] += len(vacancies)
+
         for v in vacancies:
             if is_duplicate(v):
+                s["duplicates"] += 1
                 continue
 
             if not apply_filters(v):
@@ -123,6 +132,7 @@ def run_cycle() -> dict:
                 # Экспортируем в Rejected только если реально записали в БД.
                 # Дубликат вернёт None — его уже экспортировали в прошлом цикле.
                 if database.insert_vacancy(v):
+                    s["rejected"] += 1
                     rejected_vacancies.append(v)
                 continue
 
@@ -138,8 +148,14 @@ def run_cycle() -> dict:
                     v["_scoring"] = result.model_dump()
                 except Exception:
                     logger.warning("Скоринг не удался для вакансии %s", new_id)
+                s["passed"] += 1
                 total_saved += 1
                 saved_vacancies.append(v)
+
+    try:
+        database.record_parser_runs(run_ts, stats)
+    except Exception:
+        logger.exception("Не удалось записать статистику цикла в parser_runs")
 
     logger.info(
         "Итого: получено=%d, сохранено=%d, отфильтровано=%d",
@@ -188,10 +204,20 @@ def start_scheduler() -> None:
         id="balance_check",
         max_instances=1,
     )
+    scheduler.add_job(
+        daily_report,
+        "cron",
+        hour=config.DAILY_REPORT_HOUR,
+        minute=0,
+        id="daily_report",
+        max_instances=1,
+    )
     logger.info(
-        "Шедулер запущен. Интервал парсинга: %d мин. Проверка баланса: %d мин. Ctrl+C для остановки.",
+        "Шедулер запущен. Интервал парсинга: %d мин. Проверка баланса: %d мин. "
+        "Дневная сводка: %02d:00 МСК. Ctrl+C для остановки.",
         config.PARSE_INTERVAL_MINUTES,
         config.BALANCE_CHECK_INTERVAL_MINUTES,
+        config.DAILY_REPORT_HOUR,
     )
 
     try:
