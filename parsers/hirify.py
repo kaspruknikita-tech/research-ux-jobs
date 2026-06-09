@@ -126,8 +126,14 @@ def _authenticate(session: requests.Session) -> str:
             return "cookies"
         logger.warning("[hirify] HIRIFY_COOKIES не дали авторизации (loaded=%d) — пробую дальше", loaded)
         send_alert(
-            "[HIRIFY] Куки протухли — авторизация не прошла, парсер уходит в anon.\n"
-            "Обнови HIRIFY_COOKIES (gen_hirify_cookies.py).\n@pashagots"
+            "[HIRIFY] Куки протухли — авторизация не прошла, парсер уходит в anon.\n\n"
+            "Что сделать сейчас:\n"
+            "1. python gen_hirify_cookies.py → залогиниться → скопировать вывод\n"
+            "2. Railway → переменная HIRIFY_COOKIES → вставить новое значение\n\n"
+            "Чтобы не протухали впредь: задать паролю аккаунту Hirify "
+            "(Forgot password, даже если вход через Google) и прописать в Railway "
+            "HIRIFY_EMAIL / HIRIFY_PASSWORD — тогда парсер логинится сам каждый цикл, "
+            "куки не нужны.\n@pashagots"
         )
         # Чистим cookies, чтобы протухшие не мешали password-логину
         session.cookies.clear()
