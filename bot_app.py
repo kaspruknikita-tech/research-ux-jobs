@@ -21,7 +21,7 @@ from telegram.ext import Application, CallbackQueryHandler, MessageHandler, filt
 
 import config
 import database
-from bot.alerts import send_alert
+from bot.alerts import check_balances, daily_report, send_alert
 from bot.handlers import handle_edit_reply, handle_moderation
 from bot.moderator import publish_due_scheduled, send_new_vacancies_to_moderation
 from scheduler import run_cycle
@@ -89,6 +89,23 @@ def main() -> None:
         "interval",
         minutes=5,
         id="scheduled_publish",
+        max_instances=1,
+    )
+    # Дневная сводка парсеров за прошедший день
+    scheduler.add_job(
+        daily_report,
+        "cron",
+        hour=config.DAILY_REPORT_HOUR,
+        minute=0,
+        id="daily_report",
+        max_instances=1,
+    )
+    # Проверка балансов OpenRouter / Railway
+    scheduler.add_job(
+        check_balances,
+        "interval",
+        minutes=config.BALANCE_CHECK_INTERVAL_MINUTES,
+        id="balance_check",
         max_instances=1,
     )
     scheduler.start()
