@@ -17,6 +17,7 @@ import urllib.parse
 import requests
 
 import config
+from bot.alerts import send_alert
 from parsers.base import BaseParser
 
 logger = logging.getLogger(__name__)
@@ -124,6 +125,10 @@ def _authenticate(session: requests.Session) -> str:
             logger.info("[hirify] auth=cookies (загружено %d cookies)", loaded)
             return "cookies"
         logger.warning("[hirify] HIRIFY_COOKIES не дали авторизации (loaded=%d) — пробую дальше", loaded)
+        send_alert(
+            "[HIRIFY] Куки протухли — авторизация не прошла, парсер уходит в anon.\n"
+            "Обнови HIRIFY_COOKIES (gen_hirify_cookies.py).\n@pashagots"
+        )
         # Чистим cookies, чтобы протухшие не мешали password-логину
         session.cookies.clear()
     if _login_password(session):

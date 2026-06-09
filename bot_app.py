@@ -14,6 +14,7 @@
 import logging
 import os
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from telegram.error import Conflict
@@ -108,6 +109,16 @@ def main() -> None:
         id="balance_check",
         max_instances=1,
     )
+    # Разовая сводка за вчера сегодня в 15:00 МСК (исключение, удалить после)
+    _oneshot = datetime(2026, 6, 9, 15, 0, tzinfo=ZoneInfo("Europe/Moscow"))
+    if _oneshot > datetime.now(ZoneInfo("Europe/Moscow")):
+        scheduler.add_job(
+            daily_report,
+            "date",
+            run_date=_oneshot,
+            id="daily_report_oneshot",
+            misfire_grace_time=3600,
+        )
     scheduler.start()
     logger.info("Планировщик запущен: каждые 2 часа с 10:00 до 21:00 МСК")
 
