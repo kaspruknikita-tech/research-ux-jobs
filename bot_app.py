@@ -22,7 +22,7 @@ from telegram.ext import Application, CallbackQueryHandler, MessageHandler, filt
 
 import config
 import database
-from bot.alerts import check_balances, daily_report, send_alert
+from bot.alerts import check_balances, daily_report, money_report, send_alert
 from bot.handlers import handle_edit_reply, handle_moderation
 from bot.moderator import publish_due_scheduled, send_new_vacancies_to_moderation
 from scheduler import run_cycle
@@ -101,12 +101,21 @@ def main() -> None:
         id="daily_report",
         max_instances=1,
     )
-    # Проверка балансов OpenRouter / Railway
+    # Проверка балансов OpenRouter / Railway (алерт при падении ниже порога)
     scheduler.add_job(
         check_balances,
         "interval",
         minutes=config.BALANCE_CHECK_INTERVAL_MINUTES,
         id="balance_check",
+        max_instances=1,
+    )
+    # Ежедневная денежная сводка: остаток + траты
+    scheduler.add_job(
+        money_report,
+        "cron",
+        hour=config.DAILY_REPORT_HOUR,
+        minute=5,
+        id="money_report",
         max_instances=1,
     )
     # Разовая сводка за вчера сегодня в 15:00 МСК (исключение, удалить после)
@@ -117,6 +126,13 @@ def main() -> None:
             "date",
             run_date=_oneshot,
             id="daily_report_oneshot",
+            misfire_grace_time=3600,
+        )
+        scheduler.add_job(
+            money_report,
+            "date",
+            run_date=_oneshot,
+            id="money_report_oneshot",
             misfire_grace_time=3600,
         )
     scheduler.start()
