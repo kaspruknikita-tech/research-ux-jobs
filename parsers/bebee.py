@@ -59,14 +59,6 @@ _EMPLOYMENT_MAP = {
     "OTHER": None,
 }
 
-_SALARY_MULTIPLIER = {
-    "HOUR": 2080,
-    "DAY": 260,
-    "WEEK": 52,
-    "MONTH": 12,
-    "YEAR": 1,
-}
-
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 
 
@@ -103,26 +95,19 @@ def _to_int(v) -> int | None:
 
 
 def _normalize_salary(base: dict) -> tuple[int | None, int | None, str | None]:
-    """JSON-LD baseSalary → (min_year, max_year, currency)."""
+    """JSON-LD baseSalary → (min, max, currency). Сырые значения без конвертации:
+    unitText в JSON-LD часто врёт (годовая помечена MONTH и т.п.)."""
     if not isinstance(base, dict):
         return None, None, None
     currency = base.get("currency")
     val = base.get("value") or {}
     smin = _to_int(val.get("minValue"))
     smax = _to_int(val.get("maxValue"))
-    unit = (val.get("unitText") or "YEAR").upper()
-    mult = _SALARY_MULTIPLIER.get(unit, 1)
-    if smin is not None:
-        smin *= mult
-    if smax is not None:
-        smax *= mult
     return smin, smax, currency
 
 
-def _format_location(loc) -> str:
-    """JSON-LD jobLocation → 'City, Country'. Может быть dict или list."""
-    if isinstance(loc, list):
-        loc = loc[0] if loc else None
+def _format_one_location(loc) -> str:
+    """Один JSON-LD jobLocation → 'City, Region, Country'."""
     if not isinstance(loc, dict):
         return ""
     addr = loc.get("address") or {}
@@ -144,6 +129,22 @@ def _format_location(loc) -> str:
         seen.add(key)
         parts.append(p.strip())
     return ", ".join(parts)
+
+
+def _format_location(loc) -> str:
+    """JSON-LD jobLocation → строка. Мультилокацию собирает через ' · ' (до 3),
+    чтобы шапка совпадала с текстом JD, а не брала случайную первую."""
+    items = loc if isinstance(loc, list) else [loc]
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in items:
+        s = _format_one_location(item)
+        if s and s.lower() not in seen:
+            seen.add(s.lower())
+            out.append(s)
+        if len(out) >= 3:
+            break
+    return " · ".join(out)
 
 
 def _parse_listing(html: str) -> list[str]:

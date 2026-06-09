@@ -20,6 +20,20 @@ REQUEST_DELAY = 0.5
 
 COUNTRIES = ["gb", "us", "de", "nl", "au", "ca", "fr", "sg", "at", "pl"]
 
+# Adzuna отдаёт зарплату в валюте страны запроса, а не в USD.
+COUNTRY_CURRENCY = {
+    "gb": "GBP",
+    "us": "USD",
+    "de": "EUR",
+    "nl": "EUR",
+    "fr": "EUR",
+    "at": "EUR",
+    "au": "AUD",
+    "ca": "CAD",
+    "sg": "SGD",
+    "pl": "PLN",
+}
+
 SEARCH_QUERIES = [
     "ux researcher",
     "user researcher",
