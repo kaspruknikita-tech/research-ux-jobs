@@ -8,11 +8,17 @@ import logging
 
 import requests
 
+from parsers._ats_tokens import merge_companies
 from parsers.base import BaseParser
 
 logger = logging.getLogger(__name__)
 
 API_URL = "https://boards-api.greenhouse.io/v1/boards/{board_token}/jobs?content=true"
+
+
+def all_companies() -> list[str]:
+    """SEED (COMPANIES) + авто-найденные токены из БД."""
+    return merge_companies(COMPANIES, "greenhouse")
 
 # Верифицированные board_token компаний на Greenhouse (API возвращает 200).
 # Токены не всегда совпадают с названием компании.
@@ -366,10 +372,11 @@ def _extract_work_format(job: dict) -> str:
 class GreenhouseParser(BaseParser):
     source_name = "greenhouse"
     channel = "global"
+    harvest_ats = False  # сам ATS — url уже его токен
 
     def fetch(self) -> list[dict]:
         result = []
-        for board_token in COMPANIES:
+        for board_token in all_companies():
             url = API_URL.format(board_token=board_token)
             try:
                 resp = requests.get(url, timeout=15)

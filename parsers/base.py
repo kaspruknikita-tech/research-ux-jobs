@@ -16,6 +16,10 @@ class BaseParser(ABC):
 
     source_name: str = "unknown"  # переопределяется в наследнике
     channel: str = "ru"            # "ru" или "global"
+    # Прогонять url вакансий через авто-харвест ATS-токенов.
+    # Выключено у самих ATS-парсеров (ashby/gh/lever — url уже их токен) и
+    # у парсеров с собственным ручным харвестом (designproject/userinterviews).
+    harvest_ats: bool = True
 
     @abstractmethod
     def fetch(self) -> list[dict]:
@@ -65,4 +69,14 @@ class BaseParser(ABC):
             return []
         prepared = [self.prepare(v) for v in raw_vacancies]
         logger.info("[%s] Получено вакансий: %d", self.source_name, len(prepared))
+
+        if self.harvest_ats:
+            try:
+                from tools.ats_harvest import harvest_ats_tokens
+                urls = [v["url"] for v in prepared if v.get("url")]
+                if urls:
+                    harvest_ats_tokens(urls, source_label=self.source_name)
+            except Exception:
+                logger.exception("[%s] Сбой авто-харвеста ATS, продолжаем", self.source_name)
+
         return prepared

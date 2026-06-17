@@ -89,6 +89,7 @@ def _parse_card(card) -> dict | None:
 class UserInterviewsParser(BaseParser):
     source_name = "userinterviews"
     channel = "global"
+    harvest_ats = False  # свой ручной харвест по всем карточкам (см. fetch)
 
     def fetch(self) -> list[dict]:
         try:

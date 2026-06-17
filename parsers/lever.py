@@ -8,11 +8,17 @@ import logging
 
 import requests
 
+from parsers._ats_tokens import merge_companies
 from parsers.base import BaseParser
 
 logger = logging.getLogger(__name__)
 
 API_URL = "https://api.lever.co/v0/postings/{board_token}?mode=json"
+
+
+def all_companies() -> list[str]:
+    """SEED (COMPANIES) + авто-найденные токены из БД."""
+    return merge_companies(COMPANIES, "lever")
 
 # Верифицированные board_token на Lever (jobs.lever.co/{token}).
 # Регистр важен (есть Huckleberrylabs, court-avenue и т.п.).
@@ -171,10 +177,11 @@ def _extract_salary(job: dict) -> tuple[int | None, int | None, str | None]:
 class LeverParser(BaseParser):
     source_name = "lever"
     channel = "global"
+    harvest_ats = False  # сам ATS — url уже его токен
 
     def fetch(self) -> list[dict]:
         result = []
-        for board_token in COMPANIES:
+        for board_token in all_companies():
             url = API_URL.format(board_token=board_token)
             try:
                 resp = requests.get(url, timeout=30)

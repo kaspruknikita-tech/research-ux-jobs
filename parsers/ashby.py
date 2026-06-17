@@ -9,6 +9,7 @@ import time
 
 import requests
 
+from parsers._ats_tokens import merge_companies
 from parsers.base import BaseParser
 
 logger = logging.getLogger(__name__)
@@ -228,6 +229,11 @@ WHITELIST = [
 ]
 
 
+def all_companies() -> list[str]:
+    """SEED (COMPANIES) + авто-найденные токены из БД."""
+    return merge_companies(COMPANIES, "ashby")
+
+
 def _is_relevant(title: str) -> bool:
     t = title.lower()
     return any(w in t for w in WHITELIST)
@@ -254,6 +260,7 @@ def _extract_salary(job: dict) -> tuple[int | None, int | None, str | None]:
 class AshbyParser(BaseParser):
     source_name = "ashby"
     channel = "global"
+    harvest_ats = False  # сам ATS — url уже его токен
 
     def _fetch_board(self, board_token: str, url: str) -> dict | None:
         for attempt in range(1, MAX_RETRIES + 1):
@@ -285,7 +292,7 @@ class AshbyParser(BaseParser):
 
     def fetch(self) -> list[dict]:
         result = []
-        for board_token in COMPANIES:
+        for board_token in all_companies():
             url = API_URL.format(board_token=board_token)
             data = self._fetch_board(board_token, url)
             if data is None:

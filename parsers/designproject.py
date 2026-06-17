@@ -133,6 +133,7 @@ def _enrich_from_detail(vacancy: dict, html: str) -> None:
 class DesignprojectParser(BaseParser):
     source_name = "designproject"
     channel = "global"
+    harvest_ats = False  # свой ручной харвест (см. fetch)
 
     def fetch(self) -> list[dict]:
         session = requests.Session()

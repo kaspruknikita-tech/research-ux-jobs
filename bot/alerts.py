@@ -156,7 +156,7 @@ def _short(name: str, width: int = 10) -> str:
     return name[:width].ljust(width)
 
 
-def _build_report(report_day, cur: dict, prev: dict) -> str:
+def _build_report(report_day, cur: dict, prev: dict, ats: dict | None = None) -> str:
     date_str = f"{report_day.day} {_MONTHS_RU[report_day.month - 1]}"
     cyc, prev_cyc = cur["cycles"], prev["cycles"]
 
@@ -186,6 +186,13 @@ def _build_report(report_day, cur: dict, prev: dict) -> str:
 
     silent_line = f"\n⚠️ Молчат: {', '.join(silent)}\n" if silent else ""
 
+    ats = ats or {"url": 0, "night": 0}
+    ats_total = ats.get("url", 0) + ats.get("night", 0)
+    ats_line = (
+        f"🔑 Новых ATS-токенов: <b>{ats_total}</b> "
+        f"(по ссылкам {ats.get('url', 0)}, ночной probe {ats.get('night', 0)})\n"
+    )
+
     msg = (
         f"📊 <b>Сводка парсеров за {date_str}</b>\n"
         f"Циклов: {cyc} (днём ранее {prev_cyc})\n\n"
@@ -194,6 +201,7 @@ def _build_report(report_day, cur: dict, prev: dict) -> str:
         f"{block('❌ Отсев списками:', 'rejected')}\n"
         f"{block('🔁 Дубликаты:', 'duplicates')}\n"
         f"{block('📥 Сырья всего:', 'parsed')}\n"
+        f"{ats_line}"
         f"{silent_line}\n"
         f"<i>Δ — изменение к днём ранее, нормировано на 1 цикл шедулера.</i>\n"
         f"{REPORT_MENTION}"
@@ -216,9 +224,15 @@ def daily_report() -> None:
         logger.exception("daily_report: не удалось получить статистику")
         return
 
+    try:
+        ats = database.get_discovered_counts(day_start, day_end)
+    except Exception:
+        logger.exception("daily_report: не удалось получить статистику ATS-токенов")
+        ats = None
+
     date_str = f"{report_day.day} {_MONTHS_RU[report_day.month - 1]}"
     if cur["cycles"] == 0:
         send_alert(f"📊 Сводка за {date_str}: циклов не было (воркер простаивал?).\n{REPORT_MENTION}")
         return
 
-    send_alert(_build_report(report_day, cur, prev), parse_mode="HTML")
+    send_alert(_build_report(report_day, cur, prev, ats), parse_mode="HTML")

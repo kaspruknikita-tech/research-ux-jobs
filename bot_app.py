@@ -52,6 +52,18 @@ def full_cycle() -> None:
         send_alert(f"Ошибка цикла: {type(e).__name__}: {e}")
 
 
+def night_probe_cycle() -> None:
+    """Ночной авто-харвест ATS-токенов по именам компаний из свежих вакансий."""
+    try:
+        from tools.ats_night_probe import run_night_probe
+        found = run_night_probe(since_hours=24)
+        total = sum(len(v) for v in found.values())
+        if total:
+            logger.info("Ночной probe: найдено %d новых ATS-токенов", total)
+    except Exception:
+        logger.exception("Ошибка ночного probe ATS-токенов")
+
+
 def scheduled_publish_cycle() -> None:
     """Публикует вакансии у которых наступило scheduled_at."""
     try:
@@ -99,6 +111,15 @@ def main() -> None:
         hour=config.DAILY_REPORT_HOUR,
         minute=0,
         id="daily_report",
+        max_instances=1,
+    )
+    # Ночной probe ATS-токенов по именам компаний за день (03:30 МСК)
+    scheduler.add_job(
+        night_probe_cycle,
+        "cron",
+        hour=3,
+        minute=30,
+        id="night_probe",
         max_instances=1,
     )
     # Проверка балансов OpenRouter / Railway (алерт при падении ниже порога)

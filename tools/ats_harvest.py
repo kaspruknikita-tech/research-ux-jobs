@@ -5,10 +5,10 @@
 
 Что делает:
 1. Регулярками вытаскивает токены greenhouse/ashby/lever из URL.
-2. Отсеивает уже известные (parsers/{ats}.COMPANIES).
+2. Отсеивает уже известные (parsers/{ats}.all_companies() = seed + БД).
 3. Валидирует через API (200 OK = борд жив).
-4. Дописывает в parsers/{ats}.py через append_to_parser.
-5. Мутирует in-memory COMPANIES, чтобы в том же цикле следующий ATS-парсер уже видел новые токены.
+4. Пишет валидные токены в БД (ats_discovered_tokens) — переживает редеплой Railway.
+   Следующий ATS-парсер в том же цикле прочитает их из БД через all_companies().
 
 Намеренно не фильтруем по индустрии — whitelist отсеивает на уровне вакансий.
 """
@@ -16,7 +16,7 @@
 import importlib
 import logging
 
-from tools.discover_ats_by_name import append_to_parser
+import database
 from tools.discover_ats_from_repo import (
     ATS_PATTERNS,
     _looks_like_token,
@@ -60,7 +60,7 @@ def harvest_ats_tokens(urls: list[str], source_label: str = "harvest") -> dict[s
         if not tokens:
             continue
         mod = importlib.import_module(_MODULES[ats])
-        existing = {t.lower() for t in mod.COMPANIES}
+        existing = {t.lower() for t in mod.all_companies()}
         new_tokens = sorted(t for t in tokens if t.lower() not in existing)
         if not new_tokens:
             continue
@@ -72,14 +72,11 @@ def harvest_ats_tokens(urls: list[str], source_label: str = "harvest") -> dict[s
             logger.info("[%s] %s: новых валидных нет", source_label, ats)
             continue
 
-        # In-memory: чтобы следующий парсер в цикле уже видел токены.
-        mod.COMPANIES.extend(valid)
-        # На диск: чтобы пережить рестарт процесса.
-        ok, msg = append_to_parser(ats, valid)
-        if ok:
-            logger.info("[%s] %s: +%d токенов: %s", source_label, ats, len(valid), ", ".join(valid))
-        else:
-            logger.warning("[%s] %s: запись в файл не удалась — %s", source_label, ats, msg)
-        added[ats] = valid
+        # В БД: переживает редеплой Railway. Следующий ATS-парсер в цикле
+        # прочитает токены из БД через all_companies().
+        stored = [t for t in valid if database.save_ats_token(ats, t, source=source_label)]
+        if stored:
+            logger.info("[%s] %s: +%d токенов: %s", source_label, ats, len(stored), ", ".join(stored))
+        added[ats] = stored
 
     return added

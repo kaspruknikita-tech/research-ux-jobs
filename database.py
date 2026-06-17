@@ -71,6 +71,7 @@ def init_db() -> None:
         conn.close()
     init_vacancy_scores()
     init_parser_runs()
+    init_ats_tables()
 
 
 def init_vacancy_scores() -> None:
@@ -127,6 +128,171 @@ def init_parser_runs() -> None:
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS parser_runs_run_at_idx ON parser_runs(run_at)")
         conn.commit()
+    finally:
+        conn.close()
+
+
+def init_ats_tables() -> None:
+    """Хранилище авто-найденных ATS-токенов и реестр опробованных имён.
+    На Railway ФС эфемерная — токены живут в БД, а не в parsers/*.py."""
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS ats_discovered_tokens (
+                    id        SERIAL PRIMARY KEY,
+                    ats       TEXT NOT NULL,
+                    token     TEXT NOT NULL,
+                    added_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                    source    TEXT
+                )
+            """)
+            # Регистронезависимый дедуп: один токен на один ATS.
+            cur.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS ats_tokens_unique_idx
+                ON ats_discovered_tokens (ats, lower(token))
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS ats_probed_names (
+                    id        SERIAL PRIMARY KEY,
+                    name      TEXT NOT NULL,
+                    ats       TEXT NOT NULL,
+                    result    TEXT NOT NULL,
+                    tried_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+                )
+            """)
+            cur.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS ats_probed_unique_idx
+                ON ats_probed_names (lower(name), ats)
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS ats_tokens_added_at_idx ON ats_discovered_tokens(added_at)")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def save_ats_token(ats: str, token: str, source: str | None = None) -> bool:
+    """Кладёт токен в БД. True если вставлен, False если уже был (дубликат)."""
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO ats_discovered_tokens (ats, token, source) VALUES (%s, %s, %s)
+                ON CONFLICT (ats, lower(token)) DO NOTHING
+                RETURNING id
+                """,
+                (ats, token, source),
+            )
+            inserted = cur.fetchone() is not None
+        conn.commit()
+        return inserted
+    finally:
+        conn.close()
+
+
+def load_ats_tokens(ats: str) -> list[str]:
+    """Все авто-найденные токены данного ATS из БД (порядок добавления)."""
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT token FROM ats_discovered_tokens WHERE ats = %s ORDER BY added_at",
+                (ats,),
+            )
+            return [row[0] for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def record_probed_name(name: str, ats: str, result: str) -> None:
+    """Фиксирует попытку probe по имени (result: 'hit:<token>' | 'miss').
+    Дедуп по (lower(name), ats) — повторно ночью не пробуем."""
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO ats_probed_names (name, ats, result) VALUES (%s, %s, %s)
+                ON CONFLICT (lower(name), ats) DO NOTHING
+                """,
+                (name, ats, result),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_probed_pairs() -> set[tuple[str, str]]:
+    """Множество уже опробованных (lower(name), ats) — для пропуска повторов."""
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT lower(name), ats FROM ats_probed_names")
+            return {(row[0], row[1]) for row in cur.fetchall()}
+    finally:
+        conn.close()
+
+
+def get_recent_companies(start: datetime, end: datetime) -> list[str]:
+    """Уникальные непустые названия компаний из vacancies за период [start, end)."""
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT company FROM vacancies
+                WHERE parsed_at >= %s AND parsed_at < %s
+                  AND company IS NOT NULL AND company <> ''
+                """,
+                (start.isoformat(), end.isoformat()),
+            )
+            return [row[0] for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_discovered_tokens(start: datetime, end: datetime) -> dict[str, list[str]]:
+    """Токены, добавленные за период [start, end), сгруппированные по ATS."""
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT ats, token FROM ats_discovered_tokens
+                WHERE added_at >= %s AND added_at < %s
+                ORDER BY ats, added_at
+                """,
+                (start, end),
+            )
+            out: dict[str, list[str]] = {}
+            for ats, token in cur.fetchall():
+                out.setdefault(ats, []).append(token)
+            return out
+    finally:
+        conn.close()
+
+
+def get_discovered_counts(start: datetime, end: datetime) -> dict[str, int]:
+    """Сколько токенов добавлено за период [start, end) в разрезе способа.
+    Возвращает {"night": N, "url": M} (url = всё, кроме ночного probe)."""
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT CASE WHEN source = 'night_probe' THEN 'night' ELSE 'url' END AS kind,
+                       COUNT(*)
+                FROM ats_discovered_tokens
+                WHERE added_at >= %s AND added_at < %s
+                GROUP BY kind
+                """,
+                (start, end),
+            )
+            out = {"night": 0, "url": 0}
+            for kind, cnt in cur.fetchall():
+                out[kind] = int(cnt)
+            return out
     finally:
         conn.close()
 
