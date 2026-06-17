@@ -27,11 +27,44 @@ _TAG_PAIRS = (
     (re.compile(r"<a\b[^>]*>", re.IGNORECASE), re.compile(r"</a>", re.IGNORECASE), "</a>"),
 )
 _TIER_ICONS = {"S": "⭐", "A": "🔵", "B": "🟡", "C": "🔴"}
-_VERBATIM_LABELS = {
-    "visa_sponsorship": "Виза",
-    "relocation_support": "Релокация",
-    "remote_policy": "Удалёнка",
+
+# Источники, генерирующие/переписывающие описание — текст вакансии может быть
+# выдуман (см. кейс Hinge: «Remote Worldwide», которого в оригинале нет).
+_UNTRUSTED_SOURCES = {"bebee", "designproject", "theirstack"}
+
+# Отображение сигналов в карточке модератора (статус-смайлик + короткий ярлык).
+_REMOTE_DISPLAY = {
+    "global":  ("✅", "worldwide, без гео-ограничений"),
+    "eu":      ("✅", "ЕС / EMEA"),
+    "us_only": ("⚠️", "только США"),
+    "hybrid":  ("⚠️", "гибрид (частично офис)"),
+    "on_site": ("❌", "офис, без удалёнки"),
+    "unclear": ("❓", "формат не указан"),
 }
+_YESNO_DISPLAY = {
+    "yes":     ("✅", "есть"),
+    "implied": ("🟡", "вероятно (по намёкам)"),
+    "no":      ("❌", "нет"),
+    "unclear": ("❓", "не указано"),
+}
+
+
+def _signals_block(result: ScoringResult) -> list[str]:
+    """Три сигнала для зарубежной вакансии: статус + цитата-обоснование из текста."""
+    ev = result.verbatim_evidence or {}
+
+    def why(field: str) -> str:
+        quote = ev.get(field)
+        return f" — «{quote}»" if quote else ""
+
+    r_emoji, r_label = _REMOTE_DISPLAY.get(result.remote_policy, ("❓", "формат не указан"))
+    v_emoji, v_label = _YESNO_DISPLAY.get(result.visa_sponsorship, ("❓", "не указано"))
+    l_emoji, l_label = _YESNO_DISPLAY.get(result.relocation_support, ("❓", "не указано"))
+    return [
+        f"🌍 Удалёнка: {r_emoji} {r_label}{why('remote_policy')}",
+        f"🛂 Виза: {v_emoji} {v_label}{why('visa_sponsorship')}",
+        f"✈️ Релокация: {l_emoji} {l_label}{why('relocation_support')}",
+    ]
 
 
 def _get_enrichment(result: ScoringResult | None) -> dict | None:
@@ -101,7 +134,7 @@ def _truncate_for_telegram(text: str, footer: str, limit: int = _TG_TEXT_LIMIT) 
     return truncated + tail
 
 
-def _scoring_footer(result: ScoringResult) -> str:
+def _scoring_footer(result: ScoringResult, vacancy: dict) -> str:
     icon = _TIER_ICONS[result.tier]
 
     if result.pre_filter_blocked:
@@ -111,19 +144,21 @@ def _scoring_footer(result: ScoringResult) -> str:
     if result.score > 0:
         parts[0] += f" · {result.score}/10"
 
-    if result.visa_sponsorship in ("yes", "implied"):
-        parts.append("Виза ✓")
-    if result.relocation_support in ("yes", "implied"):
-        parts.append("Релокация ✓")
-
     lines = [" | ".join(parts)]
     if result.reason:
         lines.append(f"💬 {result.reason}")
 
-    for key, quote in (result.verbatim_evidence or {}).items():
-        if quote:
-            label = _VERBATIM_LABELS.get(key, key)
-            lines.append(f"📌 {label}: «{quote}»")
+    if vacancy.get("source") in _UNTRUSTED_SOURCES:
+        warn = (f"⚠️ Источник «{vacancy.get('source')}» непроверенный — "
+                f"описание могло быть сгенерировано, сверь оригинал")
+        if vacancy.get("url"):
+            warn += f": {vacancy['url']}"
+        lines.append(warn)
+
+    # Сигналы показываем только для зарубежных вакансий (у RU-канала скоринга нет).
+    if vacancy.get("channel") != "ru":
+        lines.append("")
+        lines.extend(_signals_block(result))
 
     if result.needs_enrichment:
         lines.append("⚠️ Неполные данные, проверь вручную")
@@ -228,7 +263,7 @@ def send_to_moderation(vacancy: dict, scoring_result: ScoringResult | None = Non
             scoring_result = _get_or_score(vacancy)
 
         text = _format(vacancy, scoring_result)
-        footer = _scoring_footer(scoring_result) if scoring_result is not None else ""
+        footer = _scoring_footer(scoring_result, vacancy) if scoring_result is not None else ""
         text = _truncate_for_telegram(text, footer)
 
         mod_chat = _get_moderation_chat(vacancy.get("channel", ""))

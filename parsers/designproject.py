@@ -13,6 +13,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from parsers.base import BaseParser
+from tools.ats_harvest import harvest_ats_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -185,4 +186,14 @@ class DesignprojectParser(BaseParser):
             result.append(v)
 
         logger.info("[designproject] Итого: %d вакансий", len(result))
+
+        # Apply-URL ведёт на реальный ATS (ashby/greenhouse/lever) — харвестим
+        # токены компаний, чтобы чистый ATS-парсер тянул их напрямую, а не фейк
+        # от designproject. См. кейс Hinge Health.
+        try:
+            harvest_ats_tokens([v["url"] for v in result if v.get("url")],
+                               source_label="designproject")
+        except Exception:
+            logger.exception("[designproject] Сбой авто-харвеста ATS, продолжаем")
+
         return result

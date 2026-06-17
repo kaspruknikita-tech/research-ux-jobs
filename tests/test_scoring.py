@@ -120,15 +120,13 @@ def test_validator_clears_missing_citation():
 
 
 def test_validator_normalizes_bool_fields():
-    """Новые булевы поля (exceptional_salary, research_maturity, vague_jd) приходят
+    """Булевы поля (research_maturity, vague_jd) приходят
     в разных форматах от LLM — должны нормализоваться в bool."""
     raw = {
-        "exceptional_salary": "true",
         "research_maturity": 1,
         "vague_jd": False,
     }
     result = validate_llm_output(raw, "", enrichment_used=False)
-    assert result["exceptional_salary"] is True
     assert result["research_maturity"] is True
     assert result["vague_jd"] is False
 
@@ -358,7 +356,6 @@ def test_validator_handles_incomplete_json():
     assert result["relocation_support"] == "unclear"
     assert result["remote_policy"] == "unclear"
     assert result["experience_level"] == "unclear"
-    assert result["exceptional_salary"] is False
     assert result["research_maturity"] is False
     assert result["vague_jd"] is False
 

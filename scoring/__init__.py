@@ -146,10 +146,8 @@ def score_vacancy(vacancy: dict) -> ScoringResult:
         logger.info("BRAND: компания не определена (vacancy_id=%d) — пропуск brand scorer", vacancy_id)
         brand_data = _neutral_brand()
 
-    salary_disclosed = (
-        validated.get("salary_min") is not None
-        or validated.get("salary_max") is not None
-    )
+    # Зарплата — только из структурных полей парсера (джоб-борд), не из LLM.
+    salary_disclosed = inp.salary_min is not None or inp.salary_max is not None
 
     score, breakdown = combine_score(
         visa=validated["visa_sponsorship"],
@@ -157,7 +155,6 @@ def score_vacancy(vacancy: dict) -> ScoringResult:
         remote=validated["remote_policy"],
         brand_tag=brand_data.get("brand_tag"),
         salary_disclosed=salary_disclosed,
-        exceptional_salary=validated["exceptional_salary"],
         experience_level=validated["experience_level"],
         research_maturity=validated["research_maturity"],
         vague_jd=validated["vague_jd"],
@@ -182,9 +179,9 @@ def score_vacancy(vacancy: dict) -> ScoringResult:
         visa_sponsorship=validated["visa_sponsorship"],
         relocation_support=validated["relocation_support"],
         remote_policy=validated["remote_policy"],
-        salary_min=validated.get("salary_min"),
-        salary_max=validated.get("salary_max"),
-        salary_currency=validated.get("salary_currency"),
+        salary_min=inp.salary_min,
+        salary_max=inp.salary_max,
+        salary_currency=inp.currency,
         experience_level=validated.get("experience_level", "unclear"),
         verbatim_evidence=validated.get("verbatim_evidence") or {},
         pre_filter_blocked=False,

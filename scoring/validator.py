@@ -3,6 +3,24 @@ from __future__ import annotations
 _EVIDENCE_FIELDS = ("visa_sponsorship", "relocation_support", "remote_policy")
 _POSITIVE_VALUES = {"yes", "implied"}
 
+# remote_policy: грунтуем только «позитивные» заявки, которые модель склонна
+# выдумывать чтобы поднять вакансию. on_site/hybrid — консервативный дефолт от
+# локации (цитата не нужна), грунтовка их сносила бы верный штраф за офис.
+_REMOTE_NEEDS_QUOTE = {"global", "eu", "us_only"}
+
+# Цитата должна содержать слово по теме поля — иначе модель прикрутила
+# нерелевантное предложение (напр. visa=no обоснован цитатой про релокацию).
+_FIELD_KEYWORDS = {
+    "visa_sponsorship": ("visa", "sponsor", "authoriz", "work permit", "right to work",
+                         "immigration", "h-1b", "h1b", "eligible to work", "legally authorized"),
+    "relocation_support": ("relocat", "moving expense", "moving cost", "relo package"),
+    # для remote: «located in <город>» НЕ ключевое — иначе эхо локации сходит за
+    # доказательство формата (как было с «Location: ...» и «Full-time»).
+    "remote_policy": ("remote", "hybrid", "on-site", "on site", "onsite", "in-office",
+                      "in office", "office", "work from home", "wfh", "worldwide",
+                      "anywhere", "distributed"),
+}
+
 _LLM_FIELDS = [
     ("visa_sponsorship", lambda v: v != "unclear"),
     ("relocation_support", lambda v: v != "unclear"),
@@ -20,10 +38,6 @@ _FIELD_DEFAULTS: dict = {
     "relocation_support": "unclear",
     "remote_policy": "unclear",
     "experience_level": "unclear",
-    "salary_min": None,
-    "salary_max": None,
-    "salary_currency": None,
-    "exceptional_salary": False,
     "research_maturity": False,
     "vague_jd": False,
     "reason": "",
@@ -34,7 +48,7 @@ _VALID_REMOTE_POLICY = {"global", "eu", "us_only", "hybrid", "on_site", "unclear
 _VALID_SPONSORSHIP = {"yes", "implied", "no", "unclear"}
 _VALID_EXPERIENCE = {"junior", "mid", "senior", "lead", "unclear"}
 
-_BOOL_FIELDS = ("exceptional_salary", "research_maturity", "vague_jd")
+_BOOL_FIELDS = ("research_maturity", "vague_jd")
 
 
 def _enrich_val(raw: dict, dotpath: str):
@@ -79,9 +93,6 @@ def validate_llm_output(raw: dict | None, full_text: str, enrichment_used: bool)
     for field in _BOOL_FIELDS:
         raw[field] = _to_bool(raw.get(field))
 
-    if raw["salary_min"] is None and raw["salary_max"] is None:
-        raw["exceptional_salary"] = False
-
     if not isinstance(raw["reason"], str):
         raw["reason"] = str(raw["reason"]) if raw["reason"] else ""
 
@@ -90,11 +101,26 @@ def validate_llm_output(raw: dict | None, full_text: str, enrichment_used: bool)
         evidence = {}
 
     for field in _EVIDENCE_FIELDS:
-        if raw.get(field) in _POSITIVE_VALUES:
-            quote = evidence.get(field, "")
-            if not quote or quote not in full_text:
-                raw[field] = "unclear"
-                evidence.pop(field, None)
+        val = raw.get(field)
+        quote = evidence.get(field, "")
+
+        # Качество цитаты: дословно в тексте И по теме поля. Иначе не показываем
+        # (ловит эхо локации и мусорные токены вроде «Full-time» в роли remote).
+        quote_ok = bool(quote) and quote in full_text
+        if quote_ok and field in _FIELD_KEYWORDS:
+            ql = quote.lower()
+            quote_ok = any(kw in ql for kw in _FIELD_KEYWORDS[field])
+        if not quote_ok:
+            evidence.pop(field, None)
+
+        # Значение-«доступ» (remote global/eu/us_only, visa/reloc yes/implied)
+        # без валидной цитаты → unclear. on_site/hybrid/no — дефолт, цитата не нужна.
+        if field == "remote_policy":
+            needs_grounding = val in _REMOTE_NEEDS_QUOTE
+        else:
+            needs_grounding = val in _POSITIVE_VALUES
+        if needs_grounding and not quote_ok:
+            raw[field] = "unclear"
 
     raw["verbatim_evidence"] = evidence
 

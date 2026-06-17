@@ -51,7 +51,6 @@ def combine_score(
     remote: str,
     brand_tag: str | None,
     salary_disclosed: bool,
-    exceptional_salary: bool,
     experience_level: str,
     research_maturity: bool,
     vague_jd: bool,
@@ -75,8 +74,6 @@ def combine_score(
 
     if salary_disclosed:
         breakdown["salary_disclosed"] = 1
-    if exceptional_salary:
-        breakdown["exceptional_salary"] = 1
     if experience_level in ("mid", "senior", "lead"):
         breakdown["senior_level"] = 1
     if research_maturity:

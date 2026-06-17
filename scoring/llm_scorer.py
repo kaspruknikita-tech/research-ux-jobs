@@ -11,7 +11,7 @@ from .models import ScoringInput
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"
 
 
 _client: OpenAI | None = None
@@ -47,16 +47,7 @@ Extract these fields from the job posting. Only assign a value if evidence is ex
   - "hybrid" — partial office presence required
   - "on_site" — full-time office
   - "unclear" — not specified
-- salary_min, salary_max: integers, null if not mentioned
-- salary_currency: 3-letter code "USD"/"EUR"/"GBP"/etc, null if not mentioned
 - experience_level: "junior" (<2y), "mid" (2–5y), "senior" (5+y), "lead", "unclear"
-
-- exceptional_salary: true ONLY if salary_max is clearly TOP-OF-MARKET (top 10%) for the role:
-  - junior: salary_max >= $90k/y (or €80k, £70k, ₽10M/y)
-  - mid: salary_max >= $150k/y (or €130k, £115k, ₽17M/y)
-  - senior/lead: salary_max >= $210k/y (or €180k, £160k, ₽25M/y)
-  Set false if: salary_min/salary_max are null, JD says "competitive" without numbers,
-  or salary_max is at/below threshold. US senior $130-180k is MEDIAN, not exceptional.
 
 - research_maturity: true if posting explicitly mentions mature research practice — mixed methods, research ops, JTBD, longitudinal studies, ethnography, Dovetail/Maze/dscout, quantitative + qualitative combined. false otherwise.
 
@@ -98,11 +89,7 @@ _OUTPUT_SCORE_ONLY = """{
   "visa_sponsorship": "yes|implied|no|unclear",
   "relocation_support": "yes|implied|no|unclear",
   "remote_policy": "global|eu|us_only|hybrid|on_site|unclear",
-  "salary_min": <integer or null>,
-  "salary_max": <integer or null>,
-  "salary_currency": "<3-letter code or null>",
   "experience_level": "junior|mid|senior|lead|unclear",
-  "exceptional_salary": <true|false>,
   "research_maturity": <true|false>,
   "vague_jd": <true|false>,
   "verbatim_evidence": {
@@ -117,11 +104,7 @@ _OUTPUT_WITH_ENRICH = """{
   "visa_sponsorship": "yes|implied|no|unclear",
   "relocation_support": "yes|implied|no|unclear",
   "remote_policy": "global|eu|us_only|hybrid|on_site|unclear",
-  "salary_min": <integer or null>,
-  "salary_max": <integer or null>,
-  "salary_currency": "<3-letter code or null>",
   "experience_level": "junior|mid|senior|lead|unclear",
-  "exceptional_salary": <true|false>,
   "research_maturity": <true|false>,
   "vague_jd": <true|false>,
   "verbatim_evidence": {

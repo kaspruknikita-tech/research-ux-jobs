@@ -172,7 +172,7 @@ async def handle_edit_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     scoring_result = _get_or_score(vacancy)
     new_text = _format(vacancy, scoring_result)
     if scoring_result:
-        new_text += _scoring_footer(scoring_result)
+        new_text += _scoring_footer(scoring_result, vacancy)
     mod_chat = _get_moderation_chat(vacancy.get("channel", ""))
     kbd_dict = _keyboard(vacancy_id, vacancy["channel"])
     markup = InlineKeyboardMarkup([
