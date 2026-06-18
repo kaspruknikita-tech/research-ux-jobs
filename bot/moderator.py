@@ -32,39 +32,37 @@ _TIER_ICONS = {"S": "⭐", "A": "🔵", "B": "🟡", "C": "🔴"}
 # выдуман (см. кейс Hinge: «Remote Worldwide», которого в оригинале нет).
 _UNTRUSTED_SOURCES = {"bebee", "designproject", "theirstack"}
 
-# Отображение сигналов в карточке модератора (статус-смайлик + короткий ярлык).
+# Компактные сигналы для карточки: 🌍 удалёнка · 🛂 виза · ✈️ релокация.
 _REMOTE_DISPLAY = {
-    "global":  ("✅", "worldwide, без гео-ограничений"),
-    "eu":      ("✅", "ЕС / EMEA"),
-    "us_only": ("⚠️", "только США"),
-    "hybrid":  ("⚠️", "гибрид (частично офис)"),
-    "on_site": ("❌", "офис, без удалёнки"),
-    "unclear": ("❓", "формат не указан"),
+    "global":  ("✅", "worldwide"),
+    "eu":      ("✅", "EU"),
+    "us_only": ("⚠️", "US"),
+    "hybrid":  ("⚠️", "гибрид"),
+    "on_site": ("❌", "офис"),
+    "unclear": ("❓", ""),
 }
-_YESNO_DISPLAY = {
-    "yes":     ("✅", "есть"),
-    "implied": ("🟡", "вероятно (по намёкам)"),
-    "no":      ("❌", "нет"),
-    "unclear": ("❓", "не указано"),
-}
+_YESNO_DISPLAY = {"yes": "✅", "implied": "🟡", "no": "❌", "unclear": "❓"}
+_QUOTE_CAP = 50
 
 
 def _signals_block(result: ScoringResult) -> list[str]:
-    """Три сигнала для зарубежной вакансии: статус + цитата-обоснование из текста."""
+    """Сигналы зарубежной вакансии: одна строка статусов + цитаты-обоснования."""
     ev = result.verbatim_evidence or {}
 
-    def why(field: str) -> str:
-        quote = ev.get(field)
-        return f" — «{quote}»" if quote else ""
+    r_emoji, r_word = _REMOTE_DISPLAY.get(result.remote_policy, ("❓", ""))
+    remote = f"🌍 {r_emoji}" + (f" {r_word}" if r_word else "")
+    visa = f"🛂 {_YESNO_DISPLAY.get(result.visa_sponsorship, '❓')}"
+    reloc = f"✈️ {_YESNO_DISPLAY.get(result.relocation_support, '❓')}"
+    lines = [f"{remote} · {visa} · {reloc}"]
 
-    r_emoji, r_label = _REMOTE_DISPLAY.get(result.remote_policy, ("❓", "формат не указан"))
-    v_emoji, v_label = _YESNO_DISPLAY.get(result.visa_sponsorship, ("❓", "не указано"))
-    l_emoji, l_label = _YESNO_DISPLAY.get(result.relocation_support, ("❓", "не указано"))
-    return [
-        f"🌍 Удалёнка: {r_emoji} {r_label}{why('remote_policy')}",
-        f"🛂 Виза: {v_emoji} {v_label}{why('visa_sponsorship')}",
-        f"✈️ Релокация: {l_emoji} {l_label}{why('relocation_support')}",
-    ]
+    for emoji, field in (("🌍", "remote_policy"), ("🛂", "visa_sponsorship"),
+                         ("✈️", "relocation_support")):
+        q = ev.get(field)
+        if q:
+            if len(q) > _QUOTE_CAP:
+                q = q[:_QUOTE_CAP].rstrip() + "…"
+            lines.append(f"└ {emoji} «{q}»")
+    return lines
 
 
 def _get_enrichment(result: ScoringResult | None) -> dict | None:
@@ -149,11 +147,7 @@ def _scoring_footer(result: ScoringResult, vacancy: dict) -> str:
         lines.append(f"💬 {result.reason}")
 
     if vacancy.get("source") in _UNTRUSTED_SOURCES:
-        warn = (f"⚠️ Источник «{vacancy.get('source')}» непроверенный — "
-                f"описание могло быть сгенерировано, сверь оригинал")
-        if vacancy.get("url"):
-            warn += f": {vacancy['url']}"
-        lines.append(warn)
+        lines.append("⚠️ источник непроверен — сверь оригинал")
 
     # Сигналы показываем только для зарубежных вакансий (у RU-канала скоринга нет).
     if vacancy.get("channel") != "ru":
