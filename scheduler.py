@@ -32,6 +32,7 @@ from parsers.userinterviews import UserInterviewsParser
 from parsers.bebee import BebeeParser
 from parsers.uxwork import UxworkParser
 from parsers.fourdayjob import FourDayJobParser
+from parsers.cryptojobslist import CryptoJobsListParser
 from filters.stopwords import apply_filters
 from filters.dedup import is_duplicate
 from exporters.sheets import export_to_sheets, export_rejected_to_sheets
@@ -63,6 +64,7 @@ ACTIVE_PARSERS = [
     BebeeParser(),
     FourDayJobParser(),
     UxworkParser(),
+    CryptoJobsListParser(),
 ]
 
 
