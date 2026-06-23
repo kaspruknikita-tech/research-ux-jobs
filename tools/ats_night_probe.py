@@ -18,7 +18,16 @@ import database
 from parsers.ashby import all_companies as ashby_companies
 from parsers.greenhouse import all_companies as gh_companies
 from parsers.lever import all_companies as lever_companies
-from tools.discover_ats_by_name import candidates, check_ashby, check_gh, check_lever
+from parsers.smartrecruiters import all_companies as sr_companies
+from parsers.bamboohr import all_companies as bamboohr_companies
+from tools.discover_ats_by_name import (
+    candidates,
+    check_ashby,
+    check_bamboohr,
+    check_gh,
+    check_lever,
+    check_smartrecruiters,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +35,15 @@ _CHECKERS = {
     "ashby": check_ashby,
     "greenhouse": check_gh,
     "lever": check_lever,
+    "smartrecruiters": check_smartrecruiters,
+    "bamboohr": check_bamboohr,
 }
 _COMPANY_LOADERS = {
     "ashby": ashby_companies,
     "greenhouse": gh_companies,
     "lever": lever_companies,
+    "smartrecruiters": sr_companies,
+    "bamboohr": bamboohr_companies,
 }
 
 

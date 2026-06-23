@@ -35,6 +35,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from parsers.ashby import COMPANIES as ASHBY_EXISTING
 from parsers.greenhouse import COMPANIES as GH_EXISTING
 from parsers.lever import COMPANIES as LEVER_EXISTING
+from parsers.smartrecruiters import COMPANIES as SR_EXISTING
+from parsers.bamboohr import COMPANIES as BH_EXISTING
 
 README_URL = "https://raw.githubusercontent.com/ineelhere/remote-jobs-resources/main/README.md"
 REMOTEINTECH_API = "https://api.github.com/repos/remoteintech/remote-jobs/contents/src/companies"
@@ -214,8 +216,13 @@ _RATE_LOCKS = {
     "ashby": threading.Lock(),
     "greenhouse": threading.Lock(),
     "lever": threading.Lock(),
+    "smartrecruiters": threading.Lock(),
+    "bamboohr": threading.Lock(),
 }
-_LAST_CALL: dict[str, float] = {"ashby": 0.0, "greenhouse": 0.0, "lever": 0.0}
+_LAST_CALL: dict[str, float] = {
+    "ashby": 0.0, "greenhouse": 0.0, "lever": 0.0,
+    "smartrecruiters": 0.0, "bamboohr": 0.0,
+}
 _MIN_INTERVAL = 0.15  # sec между запросами к одному ATS — троттлинг
 
 
@@ -251,19 +258,44 @@ def check_lever(t: str) -> bool:
     return _check("lever", f"https://api.lever.co/v0/postings/{t}?mode=json")
 
 
+def check_smartrecruiters(t: str) -> bool:
+    # API отдаёт 200 на любой токен — существование = totalFound>0.
+    _throttle("smartrecruiters")
+    try:
+        r = requests.get(f"https://api.smartrecruiters.com/v1/companies/{t}/postings?limit=1", timeout=15)
+        return r.status_code == 200 and r.json().get("totalFound", 0) > 0
+    except Exception:
+        return False
+
+
+def check_bamboohr(t: str) -> bool:
+    # Несуществующий субдомен → 302 на www. Существование = 200 + ключ result.
+    _throttle("bamboohr")
+    try:
+        r = requests.get(f"https://{t}.bamboohr.com/careers/list", timeout=15, allow_redirects=False)
+        return r.status_code == 200 and "result" in r.json()
+    except Exception:
+        return False
+
+
+_ATS_CHECKS = {
+    "ashby": check_ashby,
+    "greenhouse": check_gh,
+    "lever": check_lever,
+    "smartrecruiters": check_smartrecruiters,
+    "bamboohr": check_bamboohr,
+}
+
+
 def probe_name(name: str, existing: dict) -> dict:
-    """Возвращает {ashby/greenhouse/lever: token | None} — первый успешный кандидат."""
-    out = {"name": name, "ashby": None, "greenhouse": None, "lever": None}
+    """Возвращает {ats: token | None} — первый успешный кандидат по каждому ATS."""
+    out = {"name": name, **{ats: None for ats in _ATS_CHECKS}}
     cands = candidates(name)
-    # для каждого ATS — пробуем кандидатов, останавливаемся на первом 200
     for c in cands:
-        if not out["ashby"] and c.lower() not in existing["ashby"] and check_ashby(c):
-            out["ashby"] = c
-        if not out["greenhouse"] and c.lower() not in existing["greenhouse"] and check_gh(c):
-            out["greenhouse"] = c
-        if not out["lever"] and c.lower() not in existing["lever"] and check_lever(c):
-            out["lever"] = c
-        if out["ashby"] and out["greenhouse"] and out["lever"]:
+        for ats, check in _ATS_CHECKS.items():
+            if not out[ats] and c.lower() not in existing[ats] and check(c):
+                out[ats] = c
+        if all(out[ats] for ats in _ATS_CHECKS):
             break
     return out
 
@@ -272,6 +304,8 @@ PARSER_PATHS = {
     "ashby": Path(__file__).resolve().parent.parent / "parsers" / "ashby.py",
     "greenhouse": Path(__file__).resolve().parent.parent / "parsers" / "greenhouse.py",
     "lever": Path(__file__).resolve().parent.parent / "parsers" / "lever.py",
+    "smartrecruiters": Path(__file__).resolve().parent.parent / "parsers" / "smartrecruiters.py",
+    "bamboohr": Path(__file__).resolve().parent.parent / "parsers" / "bamboohr.py",
 }
 
 
@@ -333,6 +367,8 @@ def main():
         "ashby": {t.lower() for t in ASHBY_EXISTING},
         "greenhouse": {t.lower() for t in GH_EXISTING},
         "lever": {t.lower() for t in LEVER_EXISTING},
+        "smartrecruiters": {t.lower() for t in SR_EXISTING},
+        "bamboohr": {t.lower() for t in BH_EXISTING},
     }
 
     results: list[dict] = []
@@ -343,12 +379,12 @@ def main():
             results.append(f.result())
             done += 1
             if done % 50 == 0:
-                hits = sum(1 for r in results if r["ashby"] or r["greenhouse"] or r["lever"])
+                hits = sum(1 for r in results if any(r[a] for a in _ATS_CHECKS))
                 print(f"  ... {done}/{len(names)} (хиты: {hits})")
 
     print()
     failures: list[str] = []
-    for ats in ("ashby", "greenhouse", "lever"):
+    for ats in _ATS_CHECKS:
         valid = sorted({r[ats] for r in results if r[ats]})
         print(f"=== {ats}: новых валидных {len(valid)} ===")
         for t in valid:

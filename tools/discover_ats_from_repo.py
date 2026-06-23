@@ -33,6 +33,8 @@ ATS_PATTERNS = {
     "greenhouse": re.compile(r"(?:job-?boards?|boards-api)?\.?greenhouse\.io/(?:embed/job_board\?for=)?([A-Za-z0-9_\-.]+)", re.I),
     "lever":      re.compile(r"jobs\.lever\.co/([^/?#\"' ]+)", re.I),
     "workable":   re.compile(r"apply\.workable\.com/([^/?#\"' ]+)", re.I),
+    "smartrecruiters": re.compile(r"(?:jobs\.smartrecruiters\.com|api\.smartrecruiters\.com/v1/companies)/([^/?#\"' ]+)", re.I),
+    "bamboohr":   re.compile(r"https?://([a-z0-9][a-z0-9\-]*)\.bamboohr\.com", re.I),
 }
 
 
@@ -119,6 +121,24 @@ def validate_lever(t: str) -> bool:
     try:
         r = requests.get(f"https://api.lever.co/v0/postings/{t}?mode=json", timeout=20)
         return r.status_code == 200
+    except Exception:
+        return False
+
+
+def validate_smartrecruiters(t: str) -> bool:
+    # API отдаёт 200 на любой токен — существование = totalFound>0.
+    try:
+        r = requests.get(f"https://api.smartrecruiters.com/v1/companies/{t}/postings?limit=1", timeout=20)
+        return r.status_code == 200 and r.json().get("totalFound", 0) > 0
+    except Exception:
+        return False
+
+
+def validate_bamboohr(t: str) -> bool:
+    # Несуществующий субдомен → 302 на www. Существование = 200 + ключ result.
+    try:
+        r = requests.get(f"https://{t}.bamboohr.com/careers/list", timeout=20, allow_redirects=False)
+        return r.status_code == 200 and "result" in r.json()
     except Exception:
         return False
 

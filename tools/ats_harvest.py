@@ -21,8 +21,10 @@ from tools.discover_ats_from_repo import (
     ATS_PATTERNS,
     _looks_like_token,
     validate_ashby,
+    validate_bamboohr,
     validate_gh,
     validate_lever,
+    validate_smartrecruiters,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,11 +33,15 @@ _VALIDATORS = {
     "ashby": validate_ashby,
     "greenhouse": validate_gh,
     "lever": validate_lever,
+    "smartrecruiters": validate_smartrecruiters,
+    "bamboohr": validate_bamboohr,
 }
 _MODULES = {
     "ashby": "parsers.ashby",
     "greenhouse": "parsers.greenhouse",
     "lever": "parsers.lever",
+    "smartrecruiters": "parsers.smartrecruiters",
+    "bamboohr": "parsers.bamboohr",
 }
 
 

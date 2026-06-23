@@ -25,6 +25,8 @@ from parsers.workingnomads import WorkingNomadsParser
 from parsers.greenhouse import GreenhouseParser
 from parsers.ashby import AshbyParser
 from parsers.lever import LeverParser
+from parsers.smartrecruiters import SmartRecruitersParser
+from parsers.bamboohr import BambooHRParser
 from parsers.wantapply import WantapplyParser
 from parsers.hirify import HirifyParser
 from parsers.designproject import DesignprojectParser
@@ -34,6 +36,7 @@ from parsers.uxwork import UxworkParser
 from parsers.fourdayjob import FourDayJobParser
 from parsers.cryptojobslist import CryptoJobsListParser
 from parsers.jobgether import JobgetherParser
+from parsers.remotefirstjobs import RemoteFirstJobsParser
 from filters.stopwords import apply_filters
 from filters.dedup import is_duplicate
 from exporters.sheets import export_to_sheets, export_rejected_to_sheets
@@ -58,6 +61,8 @@ ACTIVE_PARSERS = [
     GreenhouseParser(),
     AshbyParser(),
     LeverParser(),
+    SmartRecruitersParser(),
+    BambooHRParser(),
     WantapplyParser(),
     HirifyParser(),
     DesignprojectParser(),
@@ -67,6 +72,7 @@ ACTIVE_PARSERS = [
     UxworkParser(),
     CryptoJobsListParser(),
     JobgetherParser(),
+    RemoteFirstJobsParser(),
 ]
 
 
