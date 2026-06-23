@@ -72,6 +72,7 @@ def init_db() -> None:
     init_vacancy_scores()
     init_parser_runs()
     init_ats_tables()
+    init_brand_cache()
 
 
 def init_vacancy_scores() -> None:
@@ -166,6 +167,76 @@ def init_ats_tables() -> None:
                 ON ats_probed_names (lower(name), ats)
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS ats_tokens_added_at_idx ON ats_discovered_tokens(added_at)")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def init_brand_cache() -> None:
+    """Кэш брендового скоринга по компании. Hit (если запись свежая по TTL)
+    пропускает дорогой веб-вызов Perplexity. Ключ — компания в нижнем регистре."""
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS brand_cache (
+                    company     TEXT PRIMARY KEY,
+                    brand_data  JSONB NOT NULL,
+                    brand_tag   TEXT,
+                    updated_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                    hit_count   INTEGER NOT NULL DEFAULT 0
+                )
+            """)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_brand_cache(company: str, max_age_days: int = 90) -> dict | None:
+    """Возвращает закэшированный brand_data по компании, если запись свежее TTL.
+    Промах (нет записи / устарела) → None. При hit инкрементит hit_count."""
+    key = " ".join((company or "").lower().split())
+    if not key:
+        return None
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE brand_cache
+                SET hit_count = hit_count + 1
+                WHERE company = %s
+                  AND updated_at > NOW() - (%s || ' days')::interval
+                RETURNING brand_data
+                """,
+                (key, str(max_age_days)),
+            )
+            row = cur.fetchone()
+        conn.commit()
+        return row[0] if row else None
+    finally:
+        conn.close()
+
+
+def save_brand_cache(company: str, brand_data: dict) -> None:
+    """Upsert brand_data по компании. Обновляет updated_at (сбрасывает TTL)."""
+    key = " ".join((company or "").lower().split())
+    if not key:
+        return
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO brand_cache (company, brand_data, brand_tag, updated_at)
+                VALUES (%s, %s, %s, NOW())
+                ON CONFLICT (company) DO UPDATE
+                SET brand_data = EXCLUDED.brand_data,
+                    brand_tag  = EXCLUDED.brand_tag,
+                    updated_at = NOW()
+                """,
+                (key, json.dumps(brand_data), brand_data.get("brand_tag")),
+            )
         conn.commit()
     finally:
         conn.close()

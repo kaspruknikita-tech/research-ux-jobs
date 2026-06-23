@@ -22,6 +22,7 @@ from telegram.ext import Application, CallbackQueryHandler, MessageHandler, filt
 
 import config
 import database
+import scoring
 from bot.alerts import check_balances, daily_report, money_report, send_alert
 from bot.handlers import handle_edit_reply, handle_moderation
 from bot.moderator import publish_due_scheduled, send_new_vacancies_to_moderation
@@ -64,6 +65,18 @@ def night_probe_cycle() -> None:
         logger.exception("Ошибка ночного probe ATS-токенов")
 
 
+def weekly_globalwork_cycle() -> None:
+    """Еженедельный харвест ATS-токенов из globalwork.ai."""
+    try:
+        from tools.discover_ats_from_globalwork import run_discovery
+        added = run_discovery()
+        total = sum(len(v) for v in added.values())
+        if total:
+            logger.info("Globalwork discovery: найдено %d новых ATS-токенов", total)
+    except Exception:
+        logger.exception("Ошибка еженедельного globalwork discovery")
+
+
 def scheduled_publish_cycle() -> None:
     """Публикует вакансии у которых наступило scheduled_at."""
     try:
@@ -76,6 +89,8 @@ def scheduled_publish_cycle() -> None:
 
 def main() -> None:
     database.init_db()
+    # Кэш брендового скоринга по компании: повтор компании не зовёт Perplexity заново.
+    scoring.enable_brand_cache(database.get_brand_cache, database.save_brand_cache)
 
     # Фоновый планировщик — не блокирует основной поток
     scheduler = BackgroundScheduler(timezone="Europe/Moscow")
@@ -120,6 +135,16 @@ def main() -> None:
         hour=3,
         minute=30,
         id="night_probe",
+        max_instances=1,
+    )
+    # Еженедельный харвест ATS-токенов из globalwork (воскресенье 04:00 МСК)
+    scheduler.add_job(
+        weekly_globalwork_cycle,
+        "cron",
+        day_of_week="sun",
+        hour=4,
+        minute=0,
+        id="weekly_globalwork",
         max_instances=1,
     )
     # Проверка балансов OpenRouter / Railway (алерт при падении ниже порога)

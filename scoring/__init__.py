@@ -15,6 +15,45 @@ logger = logging.getLogger(__name__)
 _LOCAL_SOURCES = {"hh.ru"}
 _COMPLETENESS_THRESHOLD = 1.0
 
+# Опциональный кэш бренда по компании. Подключается на старте приложения
+# (см. bot_app.py::main → enable_brand_cache). В тестах/preview не задан —
+# кэш выключен, поведение как раньше.
+brand_cache_get = None  # Callable[[str], dict | None]
+brand_cache_put = None  # Callable[[str, dict], None]
+
+
+def enable_brand_cache(get, put) -> None:
+    """Подключает БД-кэш бренда. get(company)->dict|None, put(company, data)->None."""
+    global brand_cache_get, brand_cache_put
+    brand_cache_get = get
+    brand_cache_put = put
+
+
+def _scored_brand(inp: ScoringInput) -> dict:
+    """Брендовый скоринг с кэшем по компании. Hit → пропуск дорогого вызова Perplexity.
+    Кэш необязателен: если не подключён, всегда зовёт call_brand_scorer."""
+    if brand_cache_get is not None:
+        try:
+            cached = brand_cache_get(inp.company)
+        except Exception as exc:
+            logger.warning("BRAND cache get failed company=%r error=%s", inp.company, exc)
+            cached = None
+        if cached:
+            logger.info(
+                "BRAND: cache hit company=%r tag=%s (пропуск Perplexity, vacancy_id=%d)",
+                inp.company, cached.get("brand_tag"), inp.vacancy_id,
+            )
+            return {**cached, "cached": True}
+
+    data = call_brand_scorer(inp)
+    # Не кэшируем неуспешный fallback (error) — иначе зафиксируем нейтральный бренд.
+    if brand_cache_put is not None and not data.get("error"):
+        try:
+            brand_cache_put(inp.company, data)
+        except Exception as exc:
+            logger.warning("BRAND cache put failed company=%r error=%s", inp.company, exc)
+    return data
+
 
 def _clean_company(company: str | None) -> str:
     """Отсекает hirify-плейсхолдер ('%hirify_global%') и любую утечку 'hirify',
@@ -141,7 +180,7 @@ def score_vacancy(vacancy: dict) -> ScoringResult:
     validated = validate_llm_output(raw, full_text, enrichment_used=enrich)
 
     if inp.company:
-        brand_data = call_brand_scorer(inp)
+        brand_data = _scored_brand(inp)
     else:
         logger.info("BRAND: компания не определена (vacancy_id=%d) — пропуск brand scorer", vacancy_id)
         brand_data = _neutral_brand()
@@ -197,4 +236,4 @@ def score_vacancy(vacancy: dict) -> ScoringResult:
     )
 
 
-__all__ = ["score_vacancy", "PROMPT_VERSION", "ScoringInput", "ScoringResult", "PostEnrichment"]
+__all__ = ["score_vacancy", "enable_brand_cache", "PROMPT_VERSION", "ScoringInput", "ScoringResult", "PostEnrichment"]
