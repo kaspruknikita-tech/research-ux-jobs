@@ -18,3 +18,12 @@ __pycache__/
 
 # Экспорты
 *.csv
+
+# Мусор/отладка
+*.save
+*_debug.png
+debug_*.py
+
+# Инструменты графа
+graphify-out/
+.codegraph/

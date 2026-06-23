@@ -1,0 +1,90 @@
+flowchart TB
+    subgraph ENTRY["Точка входа (прод)"]
+        APP["bot_app.py :: main()"]
+        SCHED["BackgroundScheduler"]
+        TGAPP["Telegram Application"]
+        APP --> SCHED
+        APP --> TGAPP
+    end
+
+    subgraph JOBS["Периодические job"]
+        FC["full_cycle()"]
+        NP["night_probe_cycle()"]
+        GW["weekly_globalwork_cycle()"]
+        SP["scheduled_publish_cycle()"]
+        RPT["daily/money report · balances"]
+    end
+    SCHED --> FC & NP & GW & SP & RPT
+
+    subgraph PIPE["scheduler.py :: run_cycle()"]
+        direction TB
+        P1["ACTIVE_PARSERS"]
+        P2["is_duplicate"]
+        P3["apply_filters"]
+        P4["insert_vacancy"]
+        P5["score_vacancy"]
+        P6["export_to_sheets"]
+        P1 --> P2 --> P3 --> P4 --> P5 --> P6
+    end
+    FC --> PIPE
+
+    subgraph PARSERS["parsers/ (BaseParser)"]
+        BP["base.BaseParser"]
+        SRC["hh · adzuna · ashby · lever · greenhouse<br/>remoteok · remotive · himalayas · hirify<br/>arbeitnow · wwr · workingnomads · bebee<br/>designproject · userinterviews · wantapply · telegram"]
+        ATS["_ats_tokens.py"]
+        BP -.наследуют.-> SRC
+    end
+    P1 --> PARSERS
+
+    subgraph FILTERS["filters/"]
+        DD["dedup.is_duplicate"]
+        SW["stopwords.apply_filters"]
+    end
+    P2 --> DD
+    P3 --> SW
+
+    subgraph SCORING["scoring/ :: score_vacancy()"]
+        direction TB
+        S1["pre_filter"]
+        S2["llm_scorer.call_llm"]
+        S3["validator.validate"]
+        S4["brand_scorer"]
+        S5["score_combiner.combine"]
+        S6["tier_mapper A/B/C"]
+        S1 --> S2 --> S3 --> S4 --> S5 --> S6
+    end
+    P5 --> SCORING
+
+    subgraph BOT["bot/"]
+        MOD["moderator"]
+        HND["handlers"]
+        TPL["templates"]
+        TGA["tg_api"]
+        ALR["alerts"]
+        MOD --> TPL --> TGA
+        HND --> MOD
+    end
+    FC --> MOD
+    TGAPP --> HND
+    SP --> MOD
+    RPT --> ALR
+
+    subgraph TOOLS["tools/ (ATS-харвест)"]
+        T1["ats_night_probe"]
+        T2["discover_ats_from_globalwork"]
+    end
+    NP --> T1
+    GW --> T2
+    T1 & T2 -.токены.-> ATS
+
+    subgraph CORE["Общие модули"]
+        DB[("database.py / SQLite")]
+        CFG["config.py (env)"]
+        EXP["exporters/sheets"]
+    end
+    P4 --> DB
+    P5 --> DB
+    P6 --> EXP
+    MOD --> DB
+    BP --> CFG
+    SCORING --> CFG
