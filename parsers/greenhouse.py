@@ -25,7 +25,8 @@ def all_companies() -> list[str]:
 COMPANIES = [
     # Крупные tech — активно нанимают исследователей
     "airbnb", "stripe", "figma", "twilio", "datadog",
-    "duolingo", "gitlab", "instacart", "mixpanel", "robinhood",
+    "duolingo", "gitlab", "gitlabcrm", "instacart", "mixpanel", "robinhood",
+    "neweratech",
     "reddit", "khanacademy", "upwork",
     # Продуктовые / B2B SaaS
     "airtable", "asana", "dropbox", "intercom", "brex",
