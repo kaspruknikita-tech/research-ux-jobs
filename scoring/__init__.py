@@ -21,12 +21,22 @@ _COMPLETENESS_THRESHOLD = 1.0
 brand_cache_get = None  # Callable[[str], dict | None]
 brand_cache_put = None  # Callable[[str, dict], None]
 
+# Опциональный lookup визовых спонсоров по компании. Подключается на старте
+# (bot_app.py::main → enable_visa_lookup). В тестах/preview не задан — выключен.
+visa_lookup = None  # Callable[[str], dict | None]
+
 
 def enable_brand_cache(get, put) -> None:
     """Подключает БД-кэш бренда. get(company)->dict|None, put(company, data)->None."""
     global brand_cache_get, brand_cache_put
     brand_cache_get = get
     brand_cache_put = put
+
+
+def enable_visa_lookup(fn) -> None:
+    """Подключает проверку визового спонсора. fn(company)->{display,source}|None."""
+    global visa_lookup
+    visa_lookup = fn
 
 
 def _scored_brand(inp: ScoringInput) -> dict:
@@ -188,6 +198,13 @@ def score_vacancy(vacancy: dict) -> ScoringResult:
     # Зарплата — только из структурных полей парсера (джоб-борд), не из LLM.
     salary_disclosed = inp.salary_min is not None or inp.salary_max is not None
 
+    visa_listed = False
+    if visa_lookup is not None and inp.company:
+        try:
+            visa_listed = visa_lookup(inp.company) is not None
+        except Exception as exc:
+            logger.warning("VISA lookup failed company=%r error=%s", inp.company, exc)
+
     score, breakdown = combine_score(
         visa=validated["visa_sponsorship"],
         reloc=validated["relocation_support"],
@@ -197,6 +214,7 @@ def score_vacancy(vacancy: dict) -> ScoringResult:
         experience_level=validated["experience_level"],
         research_maturity=validated["research_maturity"],
         vague_jd=validated["vague_jd"],
+        visa_listed=visa_listed,
     )
 
     tier, action = map_tier(score)
@@ -236,4 +254,4 @@ def score_vacancy(vacancy: dict) -> ScoringResult:
     )
 
 
-__all__ = ["score_vacancy", "enable_brand_cache", "PROMPT_VERSION", "ScoringInput", "ScoringResult", "PostEnrichment"]
+__all__ = ["score_vacancy", "enable_brand_cache", "enable_visa_lookup", "PROMPT_VERSION", "ScoringInput", "ScoringResult", "PostEnrichment"]

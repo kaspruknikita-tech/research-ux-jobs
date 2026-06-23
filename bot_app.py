@@ -91,6 +91,8 @@ def main() -> None:
     database.init_db()
     # Кэш брендового скоринга по компании: повтор компании не зовёт Perplexity заново.
     scoring.enable_brand_cache(database.get_brand_cache, database.save_brand_cache)
+    # Курируемый список визовых спонсоров: матч даёт +2 к score и подсветку в карточке.
+    scoring.enable_visa_lookup(database.is_visa_sponsor)
 
     # Фоновый планировщик — не блокирует основной поток
     scheduler = BackgroundScheduler(timezone="Europe/Moscow")

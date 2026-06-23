@@ -54,6 +54,7 @@ def combine_score(
     experience_level: str,
     research_maturity: bool,
     vague_jd: bool,
+    visa_listed: bool = False,
 ) -> tuple[int, dict[str, int]]:
     """Собирает итоговый score 0-10 и breakdown.
 
@@ -71,6 +72,11 @@ def combine_score(
     brand_pts = _brand_points(brand_tag)
     if brand_pts != 0:
         breakdown[f"brand_{brand_tag}"] = brand_pts
+
+    # Компания в курируемом списке визовых спонсоров (ellis/h1bdata/myvisajobs) —
+    # сильный независимый сигнал, что виза реальна. Усиливает доступ-блок.
+    if visa_listed:
+        breakdown["visa_sponsor_listed"] = 2
 
     if salary_disclosed:
         breakdown["salary_disclosed"] = 1

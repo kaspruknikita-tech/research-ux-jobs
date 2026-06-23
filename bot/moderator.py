@@ -154,6 +154,14 @@ def _scoring_footer(result: ScoringResult, vacancy: dict) -> str:
         lines.append("")
         lines.extend(_signals_block(result))
 
+        # Компания в курируемом списке визовых спонсоров — подсветка.
+        try:
+            sponsor = database.is_visa_sponsor(vacancy.get("company"))
+        except Exception:
+            sponsor = None
+        if sponsor:
+            lines.append(f"🛂✅ В списке визовых спонсоров ({sponsor['source']})")
+
     if result.needs_enrichment:
         lines.append("⚠️ Неполные данные, проверь вручную")
 
@@ -336,9 +344,14 @@ def send_new_vacancies_to_moderation() -> int:
     if not vacancies:
         return 0
 
+    # Скорим заранее и сортируем по убыванию скора: чем выше скор,
+    # тем раньше вакансия появляется в выдаче модерации.
+    scored = [(v, _get_or_score(v)) for v in vacancies]
+    scored.sort(key=lambda pair: pair[1].score if pair[1] else -1, reverse=True)
+
     sent = 0
-    for v in vacancies:
-        if send_to_moderation(v):
+    for v, scoring_result in scored:
+        if send_to_moderation(v, scoring_result):
             sent += 1
         time.sleep(_SEND_DELAY)
 

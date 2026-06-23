@@ -73,6 +73,7 @@ def init_db() -> None:
     init_parser_runs()
     init_ats_tables()
     init_brand_cache()
+    init_visa_sponsors()
 
 
 def init_vacancy_scores() -> None:
@@ -168,6 +169,177 @@ def init_ats_tables() -> None:
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS ats_tokens_added_at_idx ON ats_discovered_tokens(added_at)")
         conn.commit()
+    finally:
+        conn.close()
+
+
+_LEGAL_SUFFIXES = {
+    "inc", "llc", "corp", "corporation", "co", "company", "ltd", "limited",
+    "llp", "lp", "plc", "gmbh", "ag", "sa", "srl", "bv", "nv", "pvt",
+    "private", "group", "holdings", "incorporated", "us", "usa", "america",
+    "americas", "international", "global", "technologies", "technology",
+    "services", "solutions", "systems", "labs", "studios", "software",
+}
+
+
+def normalize_company(name: str | None) -> str:
+    """Нормализует имя компании для матчинга: lower, убирает скобки/пунктуацию,
+    срезает хвостовые юридические суффиксы. 'Amazon.com Services LLC' -> 'amazon'."""
+    import re as _re
+    s = (name or "").lower()
+    s = _re.sub(r"\([^)]*\)", " ", s)          # убрать (...)
+    s = s.replace("&", " and ").replace(".com", " ")
+    s = _re.sub(r"[^a-z0-9 ]", " ", s)         # только буквы/цифры/пробел
+    parts = [p for p in s.split() if p]
+    # срезаем хвостовые суффиксы (несколько подряд: 'us llp' -> '')
+    while len(parts) > 1 and parts[-1] in _LEGAL_SUFFIXES:
+        parts.pop()
+    return " ".join(parts)
+
+
+def _domain_root(domain: str | None) -> str:
+    """'jobs.stripe.com' -> 'stripe'. Пусто если домен невалиден."""
+    d = (domain or "").strip().lower()
+    if not d or "." not in d:
+        return ""
+    host = d.split("/")[0]
+    labels = [l for l in host.split(".") if l]
+    if len(labels) < 2:
+        return ""
+    return labels[-2]
+
+
+_GENERIC_FIRST = {
+    "tech", "data", "info", "next", "open", "blue", "soft", "smart", "world",
+    "first", "one", "new", "core", "true", "real", "main", "best", "the",
+    "digital", "cloud", "media", "health", "care", "pay", "go", "net",
+}
+
+
+def company_match_keys(name: str | None, domain: str | None = None) -> set[str]:
+    """Набор ключей под которыми компания может встретиться в вакансии."""
+    keys: set[str] = set()
+    norm = normalize_company(name)
+    if norm:
+        keys.add(norm)
+        parts = norm.split()
+        first = parts[0]
+        # Первое слово как ключ только у многословных имён и если оно не generic —
+        # иначе 'Tech Mahindra' дал бы ложный матч любой 'Tech ...' вакансии.
+        if len(parts) > 1 and len(first) >= 5 and first not in _GENERIC_FIRST:
+            keys.add(first)
+    root = _domain_root(domain)
+    if root and len(root) >= 3 and root not in _GENERIC_FIRST:
+        keys.add(root)
+    return keys
+
+
+def init_visa_sponsors() -> None:
+    """Реестр компаний-визовых-спонсоров (ellis/h1bdata/myvisajobs).
+    Несколько ключей могут указывать на одну компанию (имя, домен). На Railway
+    ФС эфемерная — список живёт в БД."""
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS visa_sponsors (
+                    name_key  TEXT PRIMARY KEY,
+                    display   TEXT NOT NULL,
+                    source    TEXT NOT NULL,
+                    domain    TEXT,
+                    added_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+                )
+            """)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def save_visa_sponsor(display: str, source: str, domain: str | None = None) -> int:
+    """Пишет все match-ключи компании. Возвращает число новых ключей.
+    Дубль-ключ (та же компания из другого источника) игнорируется."""
+    keys = company_match_keys(display, domain)
+    if not keys:
+        return 0
+    conn = _get_connection()
+    try:
+        added = 0
+        with conn.cursor() as cur:
+            for k in keys:
+                cur.execute(
+                    """
+                    INSERT INTO visa_sponsors (name_key, display, source, domain)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (name_key) DO NOTHING
+                    RETURNING name_key
+                    """,
+                    (k, display, source, domain),
+                )
+                if cur.fetchone() is not None:
+                    added += 1
+        conn.commit()
+        return added
+    finally:
+        conn.close()
+
+
+def save_visa_sponsors_bulk(records: list[tuple[str, str, str | None]]) -> int:
+    """Батч-запись спонсоров в одном соединении. records: [(display, source, domain)].
+    Возвращает число новых ключей. На порядки быстрее save_visa_sponsor в цикле."""
+    rows: list[tuple[str, str, str, str | None]] = []
+    for display, source, domain in records:
+        for k in company_match_keys(display, domain):
+            rows.append((k, display, source, domain))
+    if not rows:
+        return 0
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            # execute_values — одна SQL-команда на все строки (не round-trip на каждую).
+            returned = psycopg2.extras.execute_values(
+                cur,
+                """
+                INSERT INTO visa_sponsors (name_key, display, source, domain)
+                VALUES %s
+                ON CONFLICT (name_key) DO NOTHING
+                RETURNING name_key
+                """,
+                rows,
+                fetch=True,
+            )
+            added = len(returned)
+        conn.commit()
+        return added
+    finally:
+        conn.close()
+
+
+def is_visa_sponsor(company: str | None) -> dict | None:
+    """Компания в списке визовых спонсоров? Возвращает {display, source} или None."""
+    keys = company_match_keys(company)
+    if not keys:
+        return None
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT display, source FROM visa_sponsors WHERE name_key = ANY(%s) LIMIT 1",
+                (list(keys),),
+            )
+            row = cur.fetchone()
+            if row:
+                return {"display": row[0], "source": row[1]}
+            return None
+    finally:
+        conn.close()
+
+
+def count_visa_sponsors() -> int:
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM visa_sponsors")
+            return cur.fetchone()[0]
     finally:
         conn.close()
 
