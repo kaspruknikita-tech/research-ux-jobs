@@ -73,9 +73,10 @@ def combine_score(
     if brand_pts != 0:
         breakdown[f"brand_{brand_tag}"] = brand_pts
 
-    # Компания в курируемом списке визовых спонсоров (ellis/h1bdata/myvisajobs) —
-    # сильный независимый сигнал, что виза реальна. Усиливает доступ-блок.
-    if visa_listed:
+    # Компания в курируемом списке визовых спонсоров (ellis/h1bdata/myvisajobs).
+    # Приор уровня компании. Явное "no" в тексте вакансии его перебивает:
+    # компания спонсирует в целом, но эта вакансия — нет (доверяем JD).
+    if visa_listed and visa != "no":
         breakdown["visa_sponsor_listed"] = 2
 
     if salary_disclosed:

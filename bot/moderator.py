@@ -155,12 +155,14 @@ def _scoring_footer(result: ScoringResult, vacancy: dict) -> str:
         lines.extend(_signals_block(result))
 
         # Компания в курируемом списке визовых спонсоров — подсветка.
+        # Приор уровня компании; если в тексте вакансии явное "no" — не показываем
+        # (эта вакансия визу не даёт, хоть компания спонсирует в целом).
         try:
             sponsor = database.is_visa_sponsor(vacancy.get("company"))
         except Exception:
             sponsor = None
-        if sponsor:
-            lines.append(f"🛂✅ В списке визовых спонсоров ({sponsor['source']})")
+        if sponsor and result.visa_sponsorship != "no":
+            lines.append(f"🛂✅ Компания-визовый спонсор (исторически, {sponsor['source']})")
 
     if result.needs_enrichment:
         lines.append("⚠️ Неполные данные, проверь вручную")
